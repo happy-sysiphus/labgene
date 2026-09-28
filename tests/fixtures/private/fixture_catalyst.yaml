@@ -1,0 +1,15 @@
+task_id: fixture_catalyst
+answer_bundle:
+  bundle_id: fixture-answers-catalyst
+  version: "1"
+  set_scope: "*"
+  blocked_documents:
+    - doi: "10.5555/fixture.catalyst.answer"
+      titles: ["Optimal catalyst loading for the fixture coupling"]
+      urls: ["https://fixture.example/papers/catalyst-answer"]
+  secret_markers: ["LEAK-CAT-9X4"]
+  hidden_asset_paths: ["src/labgene/simulators/fixture.py"]
+model_artifacts: {}
+validity_evidence: {kind: artificial_fixture}
+known_success_inputs:
+  - {catalyst: C, loading: 1.2, temperature: 90.0, residence_time: 540.0}

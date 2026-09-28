@@ -1,0 +1,7 @@
+# ALLOWED: general theory.
+url: https://textbook.fixture.example/kinetics/arrhenius
+title: Arrhenius temperature dependence of reaction rates
+snippet: The rate constant of most reactions grows exponentially with temperature; activation energy sets the slope.
+content: >-
+  The Arrhenius equation k = A exp(-Ea/RT) relates the rate constant to temperature. Higher temperature raises
+  the rate but may also accelerate decomposition pathways.

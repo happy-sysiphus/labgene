@@ -1,0 +1,30 @@
+# DRAFT - needs independent review before T08. Researcher qualification only (spec §10.3): disjoint from the main
+# evaluation tasks and from the fixed-state suite, built on no answer paper, never injected into the main evaluation.
+id: cl-constrained
+status: draft_unreviewed
+type: constrained
+simulator: mill_grinding
+author_notes: >-
+  Two metrics that must both hold, a categorical milling medium and a linear energy budget. Fineness needs speed x
+  time, phase purity loses with both; the feasible success region sits close to the budget line.
+task:
+  task_id: qual_mill_grinding
+  version: "1"
+  title: "Qualification: ball-milling fineness and phase purity under an energy budget"
+  problem: >-
+    Choose mill speed, milling time and milling medium so that BOTH fineness and phase purity reach their public
+    targets without exceeding the energy budget. Artificial deterministic response used for researcher qualification.
+  parameters:
+    - {kind: continuous, name: mill_speed, unit: rpm, min: 100, max: 600}
+    - {kind: continuous, name: mill_time, unit: min, min: 5, max: 60}
+    - {kind: categorical, name: media, choices: [zirconia, steel, alumina]}
+  constraints:
+    - {coefficients: {mill_speed: 1.0, mill_time: 6.0}, op: "<=", rhs: 700.0, description: "energy budget: mill_speed + 6*mill_time <= 700"}
+  metrics:
+    - {name: fineness, unit: "%", direction: maximize}
+    - {name: phase_purity, unit: "%", direction: maximize}
+  success:
+    - {metric: fineness, direction: maximize, target: 90.0, tolerance: 1.0}
+    - {metric: phase_purity, direction: maximize, target: 88.0, tolerance: 1.0}
+  simulator_id: qual.mill_grinding
+  simulator_version: "1"

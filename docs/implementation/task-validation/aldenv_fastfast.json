@@ -1,0 +1,118 @@
+{
+  "task_id": "aldenv_fastfast",
+  "task_version": "1",
+  "task_hash": "9018f39576c678ba1f51b08905481439167d8b42b29cdca15b42b6c00a4e85f9",
+  "simulator_id": "aldenv.fastfast",
+  "simulator_version": "w-32e5c7c55199c8fb",
+  "simulator_descriptor": "aldenv@90055ef811134f4f3b569a088491d729746538fd;src_sha256=15ea4e0e54e159a5c51c6b66a01b10e1e99fcc1c77587626b505d3be64879916;env_sha256=eed6a4740b1a7c426b089d0a831ed93c985c8c7ed6ca64c2c5cf567ca818d1f8;process=FastFast;noise=None;round_to=6",
+  "created_at": "2026-09-28T03:01:58+00:00",
+  "status": "unvalidated",
+  "reasons": [
+    "development_only: harness connection check (worker, budget, observation flow); not a main-evaluation task",
+    "no observed data: validation error vs data not measured",
+    "near-target residual not measured",
+    "open question: rule is a harness-connection proxy, not a paper-defined target",
+    "open question: difficulty not piloted and not meaningful: how easily the success region is guessed is recorded evaluator-side",
+    "open question: published slow/slow k2 (1.2 s^-1) differs from the code preset SlowSlow (1 s^-1); FastFast not checked against the published table"
+  ],
+  "development_only": true,
+  "paper": {
+    "doi": "10.1116/6.0005313",
+    "version": "J. Vac. Sci. Technol. A 44(4), 043410 (2026); preprint arXiv:2601.09980v1",
+    "title": "Performance of AI agents based on reasoning language models on ALD process optimization tasks",
+    "goal": "reach saturated growth per cycle with short doses"
+  },
+  "code": {
+    "repo": "https://github.com/aldsim/aldenv",
+    "commit": "90055ef811134f4f3b569a088491d729746538fd",
+    "package_version": "0.4.0",
+    "model": "aldenv.envs.steadystate.FastFast(noise=None, round_to=6): SingleALD k1=5, k2=4, gpc=1.0"
+  },
+  "weights_sha256": {},
+  "license": {
+    "code": "BSD-3-Clause"
+  },
+  "inputs": {
+    "parameters": [
+      {
+        "kind": "continuous",
+        "name": "t1",
+        "unit": "s",
+        "min": 0.02,
+        "max": 2.0,
+        "description": "precursor dose time"
+      },
+      {
+        "kind": "continuous",
+        "name": "t2",
+        "unit": "s",
+        "min": 0.02,
+        "max": 2.0,
+        "description": "co-reactant dose time"
+      }
+    ],
+    "constraints": [
+      {
+        "coefficients": {
+          "t1": 1.0,
+          "t2": 1.0
+        },
+        "op": "<=",
+        "rhs": 1.0,
+        "tolerance": 1e-09,
+        "description": "total dose time t1 + t2 <= 1.0 s"
+      }
+    ]
+  },
+  "metrics": [
+    {
+      "name": "gpc",
+      "unit": "angstrom/cycle",
+      "direction": "maximize",
+      "transform": "identity; upstream rounds to 6 decimals"
+    }
+  ],
+  "success_rule": {
+    "criteria": [
+      {
+        "metric": "gpc",
+        "direction": "maximize",
+        "target": 0.8,
+        "tolerance": 0.005
+      }
+    ],
+    "all_required": true,
+    "paper_goal_mapping": "Proxy for the paper's saturation-with-short-doses goal: GPC >= 0.80 - 0.005 (80 % of the model's saturation GPC 1.0) under a 1.0 s total-dose budget. Not the paper's own metric.",
+    "identities": []
+  },
+  "determinism": {
+    "repeats": 2,
+    "points": 5,
+    "cache_hits": 0,
+    "fresh_adapter_per_repeat": true,
+    "identical": true
+  },
+  "range_check": {
+    "probes": 5,
+    "feasible": 5,
+    "distinct_feasible": 4,
+    "constraints": 1,
+    "all_metrics_finite": true
+  },
+  "validation_error": null,
+  "near_target_residual": null,
+  "known_success_summary": {
+    "checked": 1,
+    "valid": 1,
+    "succeeded": 1
+  },
+  "open_questions": [
+    "rule is a harness-connection proxy, not a paper-defined target",
+    "difficulty not piloted and not meaningful: how easily the success region is guessed is recorded evaluator-side",
+    "published slow/slow k2 (1.2 s^-1) differs from the code preset SlowSlow (1 s^-1); FastFast not checked against the published table"
+  ],
+  "notes": [
+    "Worker env: .envs/aldenv (CPython 3.11.15, numpy 2.4.6); aldenv imported from the pinned clone .envs/src/aldenv/src (not installed).",
+    "Success region measured on a 0.002 s grid: 618 of 115,921 feasible points (0.53 %)."
+  ]
+}

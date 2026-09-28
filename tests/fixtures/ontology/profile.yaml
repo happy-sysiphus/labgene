@@ -1,0 +1,33 @@
+# Offline fixture ontology profile (development_only). A small registered term list for the artificial fixture
+# domain (two-variable batch reaction, catalyst screening). verified:false ids must be checked against the
+# upstream registries (EBI OLS for CHMO/ChEBI, QUDT vocab, W3C PROV-O) before any evaluation use (T08).
+# lg: = LabGene application-schema terms for task-specific quantities without a checked upstream id.
+profile_id: fixture-reaction-v1
+development_only: true
+terms:
+  # QUDT quantity kinds / units
+  - {id: "quantitykind:Temperature", label: temperature, synonyms: [reaction temperature, jacket temperature], source: QUDT, verified: false}
+  - {id: "quantitykind:Time", label: time, synonyms: [reaction time, hold time], source: QUDT, verified: false}
+  - {id: "unit:DEG_C", label: degC, synonyms: ["°C", degree Celsius], source: QUDT, kind: unit, verified: false}
+  - {id: "unit:MIN", label: min, synonyms: [minute, minutes], source: QUDT, kind: unit, verified: false}
+  - {id: "unit:SEC", label: s, synonyms: [second, seconds], source: QUDT, kind: unit, verified: false}
+  - {id: "unit:PERCENT", label: "%", synonyms: [percent], source: QUDT, kind: unit, verified: false}
+  # ChEBI entities / roles
+  - {id: "CHEBI:35223", label: catalyst, synonyms: [catalysts], source: ChEBI, verified: false}
+  - {id: "CHEBI:30187", label: aluminium oxide, synonyms: [Al2O3, alumina, aluminum oxide], source: ChEBI, verified: false}
+  # CHMO methods (id checked via OLS in research-evidence/ontology-audit.md, 2026-09-28)
+  - {id: "CHMO:0001465", label: annealing, synonyms: [anneal], source: CHMO, verified: true}
+  # PROV-O (provenance vocabulary for lineage exports)
+  - {id: "prov:Entity", label: entity, source: PROV-O, kind: provenance, verified: false}
+  - {id: "prov:wasDerivedFrom", label: was derived from, source: PROV-O, kind: provenance, verified: false}
+  # LabGene application schema (fixture-domain quantities)
+  - {id: "lg:reaction_yield", label: yield, synonyms: [reaction yield], source: labgene, verified: false}
+  - {id: "lg:rate_constant", label: rate constant, synonyms: [rate coefficient], source: labgene, verified: false}
+  - {id: "lg:conversion", label: conversion, source: labgene, verified: false}
+  - {id: "lg:catalyst_loading", label: loading, synonyms: [catalyst loading], source: labgene, verified: false}
+  - {id: "lg:residence_time", label: residence time, synonyms: [residence_time], source: labgene, verified: false}
+  - {id: "lg:turnover_number", label: TON, synonyms: [turnover number], source: labgene, verified: false}
+  - {id: "lg:selectivity", label: selectivity, source: labgene, verified: false}
+  # predicates
+  - {id: "lg:increases", label: increases, synonyms: [raises, improves], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:decreases", label: decreases, synonyms: [lowers, reduces], source: labgene, kind: predicate, verified: false}

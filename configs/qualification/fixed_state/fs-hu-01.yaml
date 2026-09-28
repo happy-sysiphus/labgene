@@ -1,0 +1,38 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-01
+status: draft_unreviewed
+domain: hypothesis_update
+counterexample: true
+task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {ph: 6.0}
+  results: {purity: 55.19}
+  note:
+    hypotheses: ['H1: purity increases monotonically with pH above 6', 'H2: purity has a narrow optimum between pH 7.5
+        and 9']
+- kind: observation
+  id: a002
+  parameters: {ph: 7.0}
+  results: {purity: 55.0}
+- kind: observation
+  id: a003
+  parameters: {ph: 8.0}
+  results: {purity: 70.45}
+- kind: observation
+  id: a004
+  parameters: {ph: 9.0}
+  results: {purity: 56.33}
+remaining_actions: 46
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: ph, min: 8.0, max: 9.0}
+  - {check: not_duplicate}
+  grounding:
+    must_not_support: [H1]
+rubric: ['Refutes H1 with obs:a004 (purity fell from pH 8 to 9) and probes between pH 8 and 9.']
+author_notes: Counterexample to the monotonic H1.

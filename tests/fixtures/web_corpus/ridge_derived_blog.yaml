@@ -1,0 +1,7 @@
+# BLOCKED by content: restates the hidden result (secret marker in snippet and content).
+url: https://blog.fixture.example/posts/ridge-recipe
+title: The fixture ridge reaction, explained simply
+snippet: "The recipe from the ridge paper in one line (ref LEAK-RIDGE-7Q2): run hot and short, exactly at the apex."
+content: >-
+  Based on the ridge paper, here is the recipe: 83 degC for 37 min gives about 95 % yield.
+  Reference code LEAK-RIDGE-7Q2.

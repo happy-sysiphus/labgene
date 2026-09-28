@@ -1,0 +1,6 @@
+# ALLOWED (B12): public targets.
+url: https://tasks.fixture.example/catalyst
+title: Fixture catalyst task statement
+snippet: The public goal is a yield of 80 % and a TON of 60 under the thermal budget temperature + 0.1 residence_time <= 150.
+content: >-
+  Reach a yield of 80 % (tolerance 2) and a TON of 60 (tolerance 3). Catalysts A, B, C, D; loading 0.5-2.5 mol%.

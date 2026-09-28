@@ -1,0 +1,36 @@
+# Implementation decisions
+
+`USER` = agreed policy from the spec/plan (not re-litigated). `IMPL` = implementation choice made here; may change before freeze with a recorded reason.
+
+| ID | Type | Decision | Why |
+|---|---|---|---|
+| U1 | USER | 50 = consultations + valid + invalid experiment attempts. 50th-action success is success; success checked before exhaustion. | spec §5 |
+| U2 | USER | Same action_id replay never re-charges; a new action_id with identical parameters is a new experiment. | spec §5, §11.2 |
+| U3 | USER | Researcher chooses consult vs experiment; harness alone executes external actions. | spec §3.1 |
+| U4 | USER | No product BO/GP optimizer in the first experiment; researcher's own numeric analysis stays (both conditions). | spec §13.1 |
+| U5 | USER | End-of-episode auto-save of ALL real experiment records (incl. never-consulted, after last consult) into own-condition memory; not an action; costs recorded; next episode blocked until saved. | spec §4, §13.5 |
+| U6 | USER | Researcher, baseline advisor, product advisor: gemini-3.1-pro-preview / Interactions / thinking_level=high. Internal processing providers configurable. | spec §10.1 |
+| I1 | IMPL | Two-stage parsing. Stage 1 (protocol): invalid JSON, unsupported action, >1 action, `consult` without a non-empty question, finalizer `incomplete`/`refusal` → protocol error (not an action; streak; 3 consecutive → `protocol_error`). Stage 2: `run_experiment` with missing/extra/out-of-range/constraint-violating parameters → invalid experiment (1 action, no value). | plan §4.2 forbids turning interpretable bad experiments into free protocol errors |
+| I2 | IMPL | Researcher and advisors get explicit history resend each decision (stateless); provider `previous_interaction_id` only chains calls inside one decision/consult for the same role. | Crash-safe resume; trivially satisfies "no continuation reuse across episodes" (B18) |
+| I3 | IMPL | Condition memory is written only at finalization, from the ledger (observations, invalid errors, consult exchanges). Current-episode context reaches advisors via ConsultRequest. | One idempotent write path; no duplicates between consult-time and finalize-time writes |
+| I4 | IMPL | One state directory per (condition, set_id, set_rep), restored from the condition's initial snapshot; superseded dirs are moved aside, never deleted. | Isolation by construction (B10); no data deletion |
+| I5 | IMPL | Episode counters are derived from committed ledger rows, not stored counters. | Invariant `actions_used = consults + evaluations + invalid` holds by construction |
+| I6 | IMPL | Fixture simulators (`fixture.ridge`, `fixture.catalyst`) are artificial analytic functions. | Offline contract checks only |
+| I7 | IMPL | ResearcherView carries no condition/set identity. | Researcher prompts are byte-identical across conditions except advisor content |
+| I8 | IMPL | Pure-Python BM25, exact cosine search, small least-squares; no numpy dependency in core. | Small corpora; fewer deps |
+| I9 | IMPL | Researcher-facing ids are localized: current episode `a003`/`obs:a003`, past episodes `e002:a003` (harness strips `<episode_id>:` and `<condition>-r<rep>-`). | episode ids embed the condition; researcher prompts must be condition-blind (I7) |
+| I10 | IMPL | Retries: attempts = 1 + `limits.infra_max_action_retries` for decisions, advisor calls, simulator calls (same action_id) and finalization (same event id). | finite, spec §11.2 |
+| I11 | IMPL | Model-change stop is sticky in the ledger; continuing requires an explicit operator flag (revalidated). A generated reply without a model name fails closed as ModelChangedError. | spec §10.1 |
+| I12 | IMPL | Knowledge state dirs pin their gate identity (bundles, set scope, checker, policy, preprocessing version); a different identity must build a fresh state (refuse, not re-gate in place). | B14; ceiling: rebuild cost when a bundle changes |
+| I13 | IMPL | Provider continuations reserve the carried history (`carried_tokens`); unknown history under an input/USD cap refuses before sending. Token estimate errs high (digits/CJK = 1 token). | caps are checked before, never after, a call |
+| I14 | IMPL | Simulator versions exposed to models are opaque hashes (`w-…`) over upstream commit + source tree + env package set; a changed checkout fails the handshake. | §6.2 hidden implementation; §3.3 determinism per version |
+| I15 | IMPL | Memory refuses development-only fallbacks (no summarizer, no derived-text gate) when `limits.development_only` is false. | no silent fixture fallback in frozen runs |
+| I16 | IMPL | `ConditionMemory.state_hash()` hashes memory content only (the scope-binding row is excluded); whole-dir snapshots still hash every table. | equal content ⇒ equal hash across set reps (B10 evidence); binding still enforced at open |
+| I17 | IMPL | Internal LLM roles (leakage gate, KG extractor, citation judge, reranker) make one physical attempt through `guarded_generate`, record requested and returned model, and fail closed (`ModelChangedError`) on another or unnamed model. | spec §10.1 applies to internal processing models too |
+| I18 | IMPL | Ontology query expansion runs only when `retrieval.query_expansion` is on AND `limits.max_query_expansions > 0` (at most one expansion ranking). | finite, configurable bound (§13.1) |
+| I19 | IMPL | Run directory = `artifacts/<run_id>/` with copies of profile and set plan; `resume` uses those copies and refuses changed task definitions; each session appends code version + guard totals to `sessions.jsonl`, and cost caps are primed from them on resume. | reproducible resume; caps hold across sessions |
+| I20 | IMPL | The cost guard persists cumulative totals (open reservations counted) to `guard.json` after every reserve/settle and is primed from it at the start of every session, before any prebuild call. Paid search/fetch requests are capped by `cost_caps.max_search_calls`; a cap stop propagates (never downgraded to "search unavailable"). | T10 finding 1: caps must hold across build-corpus/resume and hard kills |
+| I21 | IMPL | `freeze` pins by content: profile, set plan, public tasks, source tree, spec, prompts, corpus, baseline initial text, ontology profile, answer bundles, task validation reports, and the analysis-plan file content (re-hashed at every evaluation preflight). | T10 finding 2; spec §12. Initial-state snapshot hashes embed build times, so inputs are pinned instead |
+| I22 | IMPL | Episode start/end hashes cover the whole condition state (memory content + knowledge db + indexes + caches); interruption/resume history is kept in `episode_events` and reported per episode. | spec §8.1, §11.2 |
+| I23 | IMPL | Model-facing ids are condition-neutral: the baseline initial text is cited as `initial:text` (researchers see advisor citations). | I7; a condition word reached researcher inputs before |
+| I24 | IMPL | Evaluation tools: qualification grounding scores only what the researcher asserts (the research note is optional in the prompt); fixed-state and closed-loop suites are content-disjoint; `input_lock` pins every validation input by hash (required outside offline fixtures); a model-change stop in qualification is sticky like SetRunner. | Stage B review of evaluation/ |

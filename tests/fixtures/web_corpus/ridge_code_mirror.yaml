@@ -1,0 +1,5 @@
+# BLOCKED by identity: hidden simulator implementation path (AnswerBundle.hidden_asset_paths).
+url: https://code.fixture.example/mirror/src/labgene/simulators/fixture.py
+title: Mirror of simulator sources
+snippet: Source listing of the offline simulator module with its ridge and catalyst response functions.
+content: "def ridge(p): a = (p['temperature'] - 83.0) / 20.0; b = (p['time'] - 37.0) / 15.0"

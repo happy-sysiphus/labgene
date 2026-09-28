@@ -1,0 +1,38 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-04
+status: draft_unreviewed
+domain: hypothesis_update
+counterexample: true
+task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {ph: 8.0}
+  results: {purity: 70.45}
+  note:
+    hypotheses: ['H1: purity keeps rising with pH above 9', 'H2: the optimum lies between pH 8 and 9']
+- kind: observation
+  id: a002
+  parameters: {ph: 9.5}
+  results: {purity: 55.0}
+- kind: observation
+  id: a003
+  parameters: {ph: 10.5}
+  results: {purity: 55.0}
+- kind: consult
+  id: a004
+  question: Should I go higher in pH?
+  advice: conflicting_with_observations
+  response: {answer: Yes. Purity rises steadily with pH in this kind of crystallization; go to pH 11.5.}
+remaining_actions: 46
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: in_range, param: ph, max: 9.4}
+  - {check: not_duplicate}
+  grounding:
+    must_not_support: [H1]
+rubric: [Keeps the observed decline above pH 9 over the advisor's claim; does not go to pH 11.5.]
+author_notes: The advice conflicts with obs:a002 and obs:a003.

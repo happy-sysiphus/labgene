@@ -1,0 +1,133 @@
+{
+  "task_id": "fixture_catalyst",
+  "task_version": "1",
+  "task_hash": "9cd6954317f105e015197d3d87cc699c0ebf06a59272de90aacbdb3faa10f637",
+  "simulator_id": "fixture.catalyst",
+  "simulator_version": "1",
+  "simulator_descriptor": null,
+  "created_at": "2026-09-28T03:01:57+00:00",
+  "status": "unvalidated",
+  "reasons": [
+    "artificial fixture: offline contract check, not a scientific model",
+    "paper evidence missing: doi, version",
+    "code evidence missing: repo, commit",
+    "license evidence missing: code",
+    "model weights sha256 not recorded",
+    "metric transform not recorded for: yield, ton",
+    "no observed data: validation error vs data not measured",
+    "near-target residual not measured",
+    "success rule not mapped to the paper's goal"
+  ],
+  "development_only": true,
+  "paper": {},
+  "code": {},
+  "weights_sha256": {},
+  "license": {},
+  "inputs": {
+    "parameters": [
+      {
+        "kind": "categorical",
+        "name": "catalyst",
+        "choices": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "loading",
+        "unit": "mol%",
+        "min": 0.5,
+        "max": 2.5,
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "temperature",
+        "unit": "degC",
+        "min": 30.0,
+        "max": 110.0,
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "residence_time",
+        "unit": "s",
+        "min": 60.0,
+        "max": 600.0,
+        "description": ""
+      }
+    ],
+    "constraints": [
+      {
+        "coefficients": {
+          "temperature": 1.0,
+          "residence_time": 0.1
+        },
+        "op": "<=",
+        "rhs": 150.0,
+        "tolerance": 1e-09,
+        "description": "thermal budget: temperature + 0.1*residence_time <= 150"
+      }
+    ]
+  },
+  "metrics": [
+    {
+      "name": "yield",
+      "unit": "%",
+      "direction": "maximize",
+      "transform": "unrecorded"
+    },
+    {
+      "name": "ton",
+      "unit": "1",
+      "direction": "maximize",
+      "transform": "unrecorded"
+    }
+  ],
+  "success_rule": {
+    "criteria": [
+      {
+        "metric": "yield",
+        "direction": "maximize",
+        "target": 80.0,
+        "tolerance": 2.0
+      },
+      {
+        "metric": "ton",
+        "direction": "maximize",
+        "target": 60.0,
+        "tolerance": 3.0
+      }
+    ],
+    "all_required": true,
+    "paper_goal_mapping": "",
+    "identities": []
+  },
+  "determinism": {
+    "repeats": 2,
+    "points": 37,
+    "cache_hits": 0,
+    "fresh_adapter_per_repeat": true,
+    "identical": true
+  },
+  "range_check": {
+    "probes": 36,
+    "feasible": 36,
+    "distinct_feasible": 36,
+    "constraints": 1,
+    "all_metrics_finite": true
+  },
+  "validation_error": null,
+  "near_target_residual": null,
+  "known_success_summary": {
+    "checked": 1,
+    "valid": 1,
+    "succeeded": 1
+  },
+  "open_questions": [],
+  "notes": []
+}

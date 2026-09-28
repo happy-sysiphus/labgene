@@ -1,0 +1,29 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-02
+status: draft_unreviewed
+domain: hypothesis_update
+counterexample: true
+task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {cure_temperature: 150.0, cure_time: 60.0}
+  results: {hardness: 3.18}
+  note:
+    hypotheses: ['H1: at 150 degC cure_time has no effect on hardness', 'H2: temperature and time trade off (hotter needs
+        shorter)']
+- kind: observation
+  id: a002
+  parameters: {cure_temperature: 150.0, cure_time: 45.0}
+  results: {hardness: 85.27}
+remaining_actions: 48
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+  grounding:
+    must_not_support: [H1]
+rubric: ['Refutes H1: obs:a002 differs strongly from obs:a001 at the same temperature.']
+author_notes: Counterexample to 'time has no effect'.

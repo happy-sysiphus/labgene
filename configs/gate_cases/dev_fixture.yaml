@@ -1,0 +1,131 @@
+# Development gate cases (T08.4) against the ARTIFICIAL fixture answer bundles (tests/fixtures/private/*.yaml).
+# development_only: run with FixtureMarkerChecker this is a contract check of the validation tool, NOT live gate
+# accuracy. A real case set quotes real answer material: keep it with the evaluator's private assets, never in a
+# model-facing path or a public report. The whole file (cases, criteria, bundles) is fixed before any run and pinned
+# by hash per version; changing it needs a new version. `origin` is the production check context of each case
+# (default web_search: title + text + url with source = url, as knowledge/gated.py).
+version: gate-cases-dev-fixture-v1
+status: development_only
+answer_bundles: [fixture-answers-ridge@1, fixture-answers-catalyst@1]
+criteria:
+  max_false_allow_on_block_cases: 0
+  max_false_block_on_allow_cases: 0
+  max_false_allow_on_hold_cases: 0
+  max_hold_rate: 0.1
+  max_errors: 0
+cases:
+  - case_id: g01
+    category: answer_paper
+    expected: block
+    metadata: {url: "https://fixture.example/papers/ridge-answer", title: "Locating the yield ridge of the fixture reaction", doi: "10.5555/fixture.ridge.answer"}
+    text: We map the correlated temperature-time ridge of the fixture reaction and report where its apex lies.
+  - case_id: g02
+    category: answer_paper
+    expected: block
+    note: identity by URL only (no DOI in the metadata)
+    metadata: {url: "https://fixture.example/papers/catalyst-answer", title: "Catalyst loading results"}
+    text: We identify the catalyst, loading and residence time that jointly maximize yield and TON.
+  - case_id: g03
+    category: alternate_version
+    expected: block
+    note: preprint with a versioned arXiv id, another URL and title
+    metadata: {url: "https://arxiv.fixture.example/abs/2601.00001v2", title: "Locating the Yield Ridge of a Fixture Reaction (preprint)", arxiv_id: "arXiv:2601.00001v2"}
+    text: Preprint version. We chart the tilted ridge and give the apex conditions of the fixture reaction.
+  - case_id: g04
+    category: alternate_version
+    expected: block
+    note: accepted manuscript found by fuzzy title only
+    metadata: {url: "https://repository.fixture.example/items/4471", title: "Optimal Catalyst Loading for the Fixture Coupling (accepted manuscript)"}
+    text: Author accepted manuscript. Joint yield and TON optimum for the fixture coupling over four catalysts.
+  - case_id: g05
+    category: derived_from_answer
+    expected: block
+    metadata: {url: "https://blog.fixture.example/posts/ridge-recipe", title: "The fixture ridge reaction, explained simply"}
+    text: "The recipe from the ridge paper in one line (ref LEAK-RIDGE-7Q2): run hot and short, exactly at the apex."
+  - case_id: g06
+    category: derived_from_answer
+    expected: block
+    metadata: {url: "https://notes.fixture.example/catalyst", title: "Screening notes"}
+    text: "Copied from the answer sheet (LEAK-CAT-9X4): which catalyst and loading to pick."
+  - case_id: g07
+    category: hidden_table
+    expected: block
+    metadata: {url: "https://data.fixture.example/dumps/ridge-grid", title: "Ridge grid dump"}
+    text: hidden full table fixture_ridge with every temperature, time and yield value of the grid.
+  - case_id: g08
+    category: hidden_table
+    expected: block
+    note: hidden simulator implementation (AnswerBundle.hidden_asset_paths)
+    metadata: {url: "https://code.fixture.example/mirror/src/labgene/simulators/fixture.py", title: "Mirror of simulator sources"}
+    text: Source listing of the offline simulator module with its response functions.
+  - case_id: g09
+    category: citing_background_no_leak
+    expected: allow
+    note: B12 - cites the ridge answer paper without reproducing its results
+    metadata: {url: "https://review.fixture.example/articles/yield-ridges", title: "A practical review of two-variable yield ridges", doi: "10.5555/fixture.review.ridges"}
+    text: >-
+      Ridge-shaped yield surfaces appear when two variables such as temperature and time compensate each other.
+      References: Locating the yield ridge of the fixture reaction, doi:10.5555/fixture.ridge.answer.
+  - case_id: g10
+    category: citing_background_no_leak
+    expected: allow
+    note: B12 - cites the catalyst answer paper without its results
+    metadata: {url: "https://review.fixture.example/articles/supported-catalysts", title: "Supported catalysts for coupling reactions, a review", doi: "10.5555/fixture.review.catalysts"}
+    text: >-
+      Loading raises conversion but lowers TON at fixed conversion. References: Optimal catalyst loading for the
+      fixture coupling, doi:10.5555/fixture.catalyst.answer.
+  - case_id: g11
+    category: public_target
+    expected: allow
+    note: B12 - the public target is not leakage
+    metadata: {url: "https://tasks.fixture.example/ridge", title: "Fixture ridge task statement"}
+    text: The public goal of the fixture ridge task is a yield of 90 % (tolerance 1 %) by choosing temperature and time.
+  - case_id: g12
+    category: public_target
+    expected: allow
+    metadata: {url: "https://tasks.fixture.example/catalyst", title: "Fixture catalyst task statement"}
+    text: Reach a yield of 80 % (tolerance 2) and a TON of 60 (tolerance 3) under the thermal budget.
+  - case_id: g13
+    category: self_observation_inference
+    expected: allow
+    note: >-
+      B12 - contains the ridge known success input (83 degC, 37 min) but is derived from the agent's own observations;
+      never deleted by answer-string match
+    origin: derived
+    metadata: {source: "derived:obs:a004,obs:a006", kind: summary}
+    text: >-
+      From obs:a004 (temperature 80 degC, time 35 min, yield 93.9 %) and obs:a006 the ridge apex appears to lie near
+      83 degC and 37 min; the next run tests that point.
+  - case_id: g18
+    category: self_observation_inference
+    expected: allow
+    note: >-
+      B12 - contains the catalyst known success input (C, 1.2, 90 degC, 540 s) but is the agent's own inference from
+      its observations; never deleted by answer-string match
+    origin: derived
+    metadata: {source: "derived:obs:a002,obs:a005", kind: summary}
+    text: >-
+      obs:a002 (catalyst C, loading 1.2, 90 degC, 420 s) came closest on yield and TON, and obs:a005 showed a longer
+      residence time helps; the next run keeps catalyst C at loading 1.2 and 90 degC with 540 s.
+  - case_id: g14
+    category: general_background
+    expected: allow
+    metadata: {url: "https://textbook.fixture.example/kinetics/arrhenius", title: "Arrhenius temperature dependence of reaction rates"}
+    text: The rate constant of most reactions grows exponentially with temperature; activation energy sets the slope.
+  - case_id: g15
+    category: general_background
+    expected: allow
+    metadata: {url: "https://manuals.fixture.example/thermostat-ts200", title: "TS-200 thermostat operating manual"}
+    text: Setpoint ramps, jacket temperature limits and calibration of the TS-200 circulating thermostat.
+  - case_id: g16
+    category: ambiguous
+    expected: hold
+    note: no title, a one-word snippet
+    metadata: {url: "https://unknown.fixture.example/p/ridge"}
+    text: ridge
+  - case_id: g17
+    category: ambiguous
+    expected: hold
+    note: unknown origin (no url, no source)
+    metadata: {}
+    text: Some notes about batch reactor runs and how they turned out, passed on without any source.

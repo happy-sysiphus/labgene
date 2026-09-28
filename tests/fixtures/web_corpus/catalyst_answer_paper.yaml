@@ -1,0 +1,7 @@
+# BLOCKED by identity (fixture-answers-catalyst).
+url: https://fixture.example/papers/catalyst-answer
+title: Optimal catalyst loading for the fixture coupling
+doi: 10.5555/fixture.catalyst.answer
+snippet: We identify the catalyst, loading and residence time that jointly maximize yield and TON for the coupling.
+content: >-
+  Catalyst C at 1.2 mol% loading, 90 degC and 540 s residence time meets both the yield and the TON target.

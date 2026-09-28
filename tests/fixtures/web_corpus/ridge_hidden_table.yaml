@@ -1,0 +1,9 @@
+# BLOCKED by content: private full result table.
+url: https://data.fixture.example/dumps/ridge-grid
+title: Ridge grid dump
+snippet: hidden full table fixture_ridge with every temperature, time and yield value of the grid.
+content: |
+  hidden full table fixture_ridge
+  temperature,time,yield
+  83,37,95.0
+  80,35,94.1

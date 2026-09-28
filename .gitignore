@@ -7,3 +7,14 @@ data/text/
 data/manuals/*.pdf
 eval/runs.db
 eval/transcripts/
+.venv/
+.envs/
+/artifacts/
+/private/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env.*
+!.env.example
+.review_scratch/
+configs/live.yaml

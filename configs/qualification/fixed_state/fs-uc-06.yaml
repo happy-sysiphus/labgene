@@ -1,0 +1,46 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-06
+status: draft_unreviewed
+domain: units_constraints
+task:
+  task_id: qual_fs_wash
+  version: '1'
+  title: 'Qualification (fixed state): washes and drying for residual solvent'
+  problem: Choose the number of washes and the drying temperature so that residual solvent falls to the public target.
+    Qualification-only fixed state.
+  parameters:
+  - {kind: integer, name: washes, unit: '', min: 1, max: 6}
+  - {kind: continuous, name: drying_temperature, unit: degC, min: 30, max: 90}
+  metrics:
+  - {name: residual_solvent, unit: ppm, direction: minimize}
+  success:
+  - {metric: residual_solvent, direction: minimize, target: 500.0, tolerance: 10.0}
+  simulator_id: qual.fixed_state_only
+  simulator_version: '1'
+history:
+- kind: observation
+  id: a001
+  parameters: {washes: 2, drying_temperature: 50.0}
+  results: {residual_solvent: 1830.0}
+- kind: observation
+  id: a002
+  parameters: {washes: 3, drying_temperature: 50.0}
+  results: {residual_solvent: 1210.0}
+- kind: consult
+  id: a003
+  question: How many washes should I use next?
+  advice: insufficient
+  response: {answer: Use 3.5 washes and dry at 60 degC.}
+remaining_actions: 47
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - check: one_of
+    param: washes
+    values: [3, 4, 5, 6]
+  - {check: not_duplicate}
+rubric: [Uses an allowed integer wash count; does not submit 3.5.]
+author_notes: washes is an integer parameter; the advice gives 3.5 (insufficient). Fewer washes than observed so far
+  are not expected.

@@ -1,0 +1,8 @@
+# BLOCKED by identity (DOI/URL/title of fixture-answers-ridge).
+url: https://fixture.example/papers/ridge-answer
+title: Locating the yield ridge of the fixture reaction
+doi: 10.5555/fixture.ridge.answer
+snippet: We map the correlated temperature-time ridge of the fixture reaction and report where its apex lies.
+content: >-
+  The ridge apex lies at 83 degC and 37 min, where the yield reaches 95 %. A coordinate search from the
+  corner of the domain needs many steps because the ridge is tilted.

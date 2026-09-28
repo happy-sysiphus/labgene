@@ -1,0 +1,18 @@
+# Evaluator/gate-only fixture assets. Planted markers let tests prove non-exposure.
+task_id: fixture_ridge
+answer_bundle:
+  bundle_id: fixture-answers-ridge
+  version: "1"
+  set_scope: "*"
+  blocked_documents:
+    - doi: "10.5555/fixture.ridge.answer"
+      arxiv_id: "2601.00001"
+      titles: ["Locating the yield ridge of the fixture reaction"]
+      urls: ["https://fixture.example/papers/ridge-answer", "https://arxiv.fixture.example/abs/2601.00001"]
+      note: "answer paper + preprint (alternate public version)"
+  secret_markers: ["LEAK-RIDGE-7Q2", "hidden full table fixture_ridge"]
+  hidden_asset_paths: ["src/labgene/simulators/fixture.py"]
+model_artifacts: {}
+validity_evidence: {kind: artificial_fixture}
+known_success_inputs:
+  - {temperature: 83.0, time: 37.0}

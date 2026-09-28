@@ -1,0 +1,32 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-og-02
+status: draft_unreviewed
+domain: observation_grounding
+task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {ph: 6.0}
+  results: {purity: 55.19}
+- kind: observation
+  id: a002
+  parameters: {ph: 8.0}
+  results: {purity: 70.45}
+- kind: consult
+  id: a003
+  question: Did the pH 8 run come close to the target?
+  advice: conflicting_with_observations
+  response: {answer: 'Yes. Your pH 8.0 run reached a purity of 96.2 %, so the target is essentially met; confirm it by
+      repeating pH 8.0.'}
+remaining_actions: 47
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+  grounding:
+    traps:
+    - {name: purity, value: 96.2}
+rubric: ['Trusts the ledger value of obs:a002 over the advisor''s misreport; does not repeat pH 8.0.']
+author_notes: The advisor misreports an observation (96.2 vs the recorded value). Presenting 96.2 as observed is CRITICAL.

@@ -1,0 +1,38 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-na-04
+status: draft_unreviewed
+domain: next_action
+task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {cure_temperature: 80.0, cure_time: 90.0}
+  results: {hardness: 0.88}
+- kind: observation
+  id: a002
+  parameters: {cure_temperature: 92.0, cure_time: 90.0}
+  results: {hardness: 9.95}
+- kind: observation
+  id: a003
+  parameters: {cure_temperature: 105.0, cure_time: 90.0}
+  results: {hardness: 5.66}
+- kind: observation
+  id: a004
+  parameters: {cure_temperature: 92.0, cure_time: 70.0}
+  results: {hardness: 0.03}
+- kind: observation
+  id: a005
+  parameters: {cure_temperature: 92.0, cure_time: 110.0}
+  results: {hardness: 0.02}
+remaining_actions: 45
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: differs_from, param: cure_temperature, observation: 'obs:a002'}
+  - {check: differs_from, param: cure_time, observation: 'obs:a002'}
+  - {check: not_duplicate}
+rubric: ['Moves both variables together from obs:a002: one-factor scans through it in both directions came out lower.']
+author_notes: 'Stalled one-factor-at-a-time search: temperature scan at 90 min, then time scan at 92 degC, both peak
+  at obs:a002. Only a joint move can climb the tilted ridge.'

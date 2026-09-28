@@ -1,0 +1,6 @@
+# ALLOWED (B12): the public task target is not leakage.
+url: https://tasks.fixture.example/ridge
+title: Fixture ridge task statement
+snippet: The public goal of the fixture ridge task is a yield of 90 % (tolerance 1 %) by choosing temperature and time.
+content: >-
+  Reach a yield of 90 % within a tolerance of 1 %. Temperature ranges from 20 to 120 degC and time from 1 to 60 min.

@@ -1,0 +1,31 @@
+# Fixed-state-only public task (researcher qualification, spec §10.3). DRAFT - needs independent review.
+# Never run: fixed-state histories are recorded states whose values come from the evaluator-side reference
+# function qualification.FIXED_STATE_REFERENCES[simulator_id] (checked on load). Disjoint from the closed-loop
+# suite (other parameters, metrics and functions), so fixed-state content never discloses a closed-loop input.
+task_id: qual_fs_coating_cure
+version: '1'
+title: 'Qualification (fixed state): coating cure temperature and time'
+problem: Choose the cure temperature and cure time of a coating so that its hardness reaches the public target. Artificial
+  deterministic response used for researcher qualification (fixed state).
+parameters:
+- kind: continuous
+  name: cure_temperature
+  unit: degC
+  min: 60
+  max: 180
+- kind: continuous
+  name: cure_time
+  unit: min
+  min: 5
+  max: 120
+metrics:
+- name: hardness
+  unit: HV
+  direction: maximize
+success:
+- metric: hardness
+  direction: maximize
+  target: 88.0
+  tolerance: 1.0
+simulator_id: qual.fs.coating_cure
+simulator_version: '1'

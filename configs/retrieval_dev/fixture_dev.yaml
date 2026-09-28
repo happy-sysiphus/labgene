@@ -1,0 +1,70 @@
+# Retrieval / transcription development set over the ARTIFICIAL fixture corpus (tests/fixtures/corpus).
+# development_only: with the fixture hash embedder this is a contract check of the validation tool, never embedding,
+# parser or product quality. The whole set (queries, gold references, k, configs, adoption rule, transcriptions) is
+# declared before any run and pinned by hash per version; any change needs a new version.
+# Gold references are doc + section headings (resolved to approved chunks).
+version: retrieval-dev-fixture-v1
+status: development_only
+corpus: tests/fixtures/corpus
+k: 3
+configs: [bm25_only, dense_only, rrf, rrf_reranker]
+adoption_rule:
+  primary: recall_at_k
+  tie_break: [mrr, cost_rank]          # ties -> higher MRR, then the cheaper config
+  cost_rank: {bm25_only: 0, dense_only: 1, rrf: 2, rrf_reranker: 3}
+queries:
+  - query_id: q01
+    query: hold time range and jacket temperature limit
+    relevant: [{doc: ridge_kinetics_notes, section: Operating window}]
+  - query_id: q02
+    query: thermal budget interlock on temperature plus residence time
+    relevant: [{doc: catalyst_screening_manual, section: Thermal budget}]
+  - query_id: q03
+    query: higher catalyst loading lowers TON at fixed conversion
+    relevant:
+      - {doc: catalyst_screening_manual, section: Loading and conversion}
+      - {doc: reaction_engineering_review, section: Catalyst screening practice}
+      - {doc: general_background, section: Catalyst screening}
+  - query_id: q04
+    query: one-factor searches stall on a tilted ridge
+    relevant:
+      - {doc: reaction_engineering_review, section: Ridge-shaped responses}
+      - {doc: general_background, section: Two-variable searches}
+  - query_id: q05
+    query: thermostat setpoint measured deviation calibration
+    relevant: [{doc: catalyst_screening_manual, section: Thermostat calibration table}]
+  - query_id: q06
+    query: Arrhenius rate constant and activation energy
+    relevant: [{doc: ridge_kinetics_notes, section: Temperature dependence}]
+  - query_id: q07
+    query: conversion at 60 degC after 10 min
+    relevant: [{doc: ridge_kinetics_notes, section: Conversion log}]
+  - query_id: q08
+    query: maximum jacket temperature in the scanned service note
+    relevant: [{doc: catalyst_screening_manual, section: Scanned service note}]
+transcriptions:
+  - item_id: t01
+    ref: {doc: ridge_kinetics_notes, section: Operating window}
+    ranges: ["T_max ≤ 120 °C", "1–60 min", "80–95 %", "40 degC < T < 100 degC", "< 5 %"]
+    numbers: ["120", "1", "60", "80", "95", "40", "100", "5"]
+    units: ["°C", "min", "%", "degC"]
+    uncertain: false
+  - item_id: t02
+    ref: {doc: catalyst_screening_manual, section: Thermostat calibration table}
+    lines_in_every_chunk: ["| setpoint | measured | deviation |", "| [degC] | [degC] | [degC] |"]
+    numbers: ["30.2", "100.9", "121.5"]
+    uncertain: false
+  - item_id: t03
+    ref: {doc: catalyst_screening_manual, section: Scanned service note}
+    uncertain: true
+  - item_id: t04
+    ref: {doc: ridge_kinetics_notes, section: Conversion log}
+    lines_in_every_chunk: ["| run | temperature | time | conversion |", "| [1] | [degC] | [min] | [%] |"]
+    numbers: ["12.5", "31.0", "58.2"]
+  - item_id: t05
+    ref: {doc: ridge_kinetics_notes, section: Temperature dependence}
+    ranges: ['k = A \exp\left(-\frac{E_a}{R T}\right)', "between 40 and 100 degC"]
+  - item_id: t06
+    ref: {doc: catalyst_screening_manual, section: Thermal budget}
+    ranges: ["temperature + 0.1 × residence_time ≤ 150"]
+    numbers: ["0.1", "150"]

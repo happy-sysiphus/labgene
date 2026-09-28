@@ -1,0 +1,15 @@
+# SimulatorConfig entries used by `python -m labgene.simulators.task_validation <task_id>`.
+# Worker envs and upstream clones live under .envs/ (git-ignored); see README.md here to rebuild them.
+# Live/evaluation profiles need the same entries under `simulators:` (requested from the main implementer).
+fixture.ridge:    {backend: fixture, fixture_function: ridge}
+fixture.catalyst: {backend: fixture, fixture_function: catalyst}
+aldenv.fastfast:
+  backend: worker
+  python: .envs/aldenv/Scripts/python.exe
+  worker_args: [--backend, aldenv, --source, .envs/src/aldenv, --process, FastFast, --round-to, "6"]
+  timeout_s: 30
+sim.suzuki_c1:
+  backend: worker
+  python: .envs/summit/Scripts/python.exe
+  worker_args: [--backend, summit, --source, .envs/src/summit, --case, "1"]
+  timeout_s: 120

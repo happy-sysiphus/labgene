@@ -1,0 +1,37 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-06
+status: draft_unreviewed
+domain: hypothesis_update
+counterexample: true
+task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {ph: 3.5}
+  results: {purity: 68.95}
+- kind: observation
+  id: a002
+  parameters: {ph: 4.2}
+  results: {purity: 85.0}
+- kind: observation
+  id: a003
+  parameters: {ph: 5.0}
+  results: {purity: 66.04}
+  note:
+    hypotheses: ['H1: the peak near pH 4.2 is the global maximum of purity', 'H2: another, higher peak exists elsewhere']
+- kind: observation
+  id: a004
+  parameters: {ph: 8.2}
+  results: {purity: 89.95}
+remaining_actions: 46
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: ph, min: 7.6, max: 9.0}
+  - {check: not_duplicate}
+  grounding:
+    must_not_support: [H1]
+rubric: ['Refutes H1 with obs:a004 (higher than the pH 4.2 peak) and explores around pH 8.2.']
+author_notes: Counterexample to the decoy-peak hypothesis.

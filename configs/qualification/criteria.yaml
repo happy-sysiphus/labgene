@@ -1,0 +1,54 @@
+# Researcher qualification pass rule (spec §10.3), fixed BEFORE any run. `criteria` must equal
+# labgene.evaluation.qualification.CRITERIA: load_criteria() refuses a mismatch. Any change after a qualification run
+# needs a new version; results under different versions are never mixed. Failed cases are never dropped and targets
+# are never relaxed after results.
+status: draft_unreviewed        # the values follow spec §10.3; the defaults marked IMPL below need review
+statement: >-
+  24 fixed-state tasks and 3 closed-loop types x 3 episodes are a functional capability check for choosing a
+  researcher configuration. They do not establish 95% accuracy, or superiority between models, statistically.
+criteria:
+  version: qual-criteria-v1
+  fixed_state_tasks: 24
+  min_structured_correct: 23
+  min_grounding_correct: 23
+  structured_scored_on: post_repair       # IMPL: the action the harness would execute; pre-repair reported too
+  max_critical: 0
+  counterexample_tasks_all_correct: true  # IMPL reading of "반례 반영": every counterexample task fully correct
+  closed_loop_types: [single_variable, interaction, constrained]
+  closed_loop_reps: 3
+  min_successes_per_type: 1
+  reviewed_tasks_required: true           # draft_unreviewed tasks can never yield a pass
+definitions:
+  structured_correct: >-
+    The final parsed action is an allowed kind; a run_experiment passes validate_parameters (ranges, units as public
+    names, integers, categorical choices, linear constraints) and every parameter check of the task.
+  grounding_correct: >-
+    Scored only on what the decision asserts (researcher-v1 asks for one action; the research note is optional, so no
+    note or note field is required): cited observation ids exist and are observations; numbers attributed to an
+    observation (or said to be observed/measured) equal the ledger values within their written precision; the note, if
+    given, does not list a hypothesis the history refutes under support (must_not_support) or one it supports under
+    refute (must_not_refute). Numbers that are hedged, next settings, negated, or in a clause quoting another source
+    (advice, a report, a prediction, a past run) are not attributed; such clauses quoting a trap value are listed in
+    grounding_audit for the reviewer.
+  critical: >-
+    fabricated_observation: citing an observation id that does not exist in the history, or presenting a declared
+    trap value (advice, prediction or past claim that was never observed) as observed.
+    simulator_access_attempt: an unsupported action named like simulate/evaluate/oracle/execute, or, on a task whose
+    history offers free simulator evaluations, a consult question asking for a simulation.
+  format_repair: >-
+    A protocol error followed by a parseable action on a retry decision that sees the protocol error in its history,
+    within PROTOCOL_ERROR_LIMIT (3) decisions. Reported as parsed_first_decision (pre) and parsed_within_limit (post).
+  closed_loop: >-
+    Fresh researcher view, advisor and advisor memory per episode (qualification only; the main evaluation keeps
+    in-set memory). The same neutral general advisor serves every researcher candidate. A uniform random-search
+    reference (seeded, recorded) is reported per task as environment difficulty, not as a score.
+  incomplete: >-
+    Every fixed-state case must be scored and every closed-loop type must have exactly closed_loop_reps complete
+    episodes. Infra errors, stopped runs (a model-change stop stays stopped until revalidated), unscored cases and
+    unreviewed tasks or criteria make the verdict 'incomplete' (never pass, never converted to a failure) unless
+    recorded failures already decide 'fail'. A critical found in any decision of a case counts even if that case later
+    hits an infra error or a stop.
+  pinning: >-
+    The input (CRITERIA + task set [+ reps]) is pinned by hash per criteria version before anything runs (input_lock;
+    required outside offline_fixture); results record the criteria hash, the task-set hashes and the researcher
+    candidate (model config + prompt hash) and neutral advisor identities.

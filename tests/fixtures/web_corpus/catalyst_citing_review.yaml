@@ -1,0 +1,10 @@
+# ALLOWED (B12): cites the catalyst answer paper without its results.
+url: https://review.fixture.example/articles/supported-catalysts
+title: Supported catalysts for coupling reactions, a review
+doi: 10.5555/fixture.review.catalysts
+snippet: >-
+  Surveys loading effects on conversion and TON; cites "Optimal catalyst loading for the fixture coupling"
+  (doi:10.5555/fixture.catalyst.answer).
+content: >-
+  Loading raises conversion but lowers TON at fixed conversion. Thermal budgets couple temperature and
+  residence time. References: Optimal catalyst loading for the fixture coupling, doi:10.5555/fixture.catalyst.answer.

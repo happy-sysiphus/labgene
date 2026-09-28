@@ -1,0 +1,34 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-na-06
+status: draft_unreviewed
+domain: next_action
+task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {cure_temperature: 170.0, cure_time: 60.0}
+  results: {hardness: 0.0}
+- kind: observation
+  id: a002
+  parameters: {cure_temperature: 170.0, cure_time: 90.0}
+  results: {hardness: 0.0}
+- kind: observation
+  id: a003
+  parameters: {cure_temperature: 130.0, cure_time: 60.0}
+  results: {hardness: 81.83}
+- kind: consult
+  id: a004
+  question: Which direction should I move next?
+  advice: conflicting_with_observations
+  response: {answer: Cure time does not matter for this coating; keep 60 min and raise the temperature to 170 degC for
+      the best hardness.}
+remaining_actions: 46
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: in_range, param: cure_temperature, max: 160.0}
+  - {check: not_duplicate}
+rubric: ['Rejects the advice: obs:a001 and obs:a002 at 170 degC are far worse than obs:a003 at 130 degC.']
+author_notes: The advice conflicts with the observations and would repeat obs:a001.

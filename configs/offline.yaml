@@ -1,0 +1,29 @@
+# Offline fixture profile: no API keys, no network. execution_mode is recorded in every manifest/report.
+# Results from this profile are contract checks only - never research performance or product value.
+profile_id: offline
+execution_mode: offline_fixture
+roles:
+  researcher:          {provider: fixture, model: gemini-3.1-pro-preview, endpoint: fixture, thinking_level: high, max_output_tokens: 4096}
+  advisor_baseline:    {provider: fixture, model: gemini-3.1-pro-preview, endpoint: fixture, thinking_level: high, max_output_tokens: 4096}
+  advisor_product:     {provider: fixture, model: gemini-3.1-pro-preview, endpoint: fixture, thinking_level: high, max_output_tokens: 4096}
+  internal_summarizer: {provider: fixture, model: fixture-summarizer, endpoint: fixture}
+  kg_extractor:        {provider: fixture, model: fixture-kg-extractor, endpoint: fixture}
+  leakage_gate:        {provider: fixture, model: fixture-marker-gate, endpoint: fixture}
+  embedder:            {provider: fixture, model: fixture-hash-embedder, endpoint: fixture, dimensions: 256}
+limits:
+  development_only: true
+cost_caps: {}          # offline: nothing billable; caps unset is fine only because no real provider is allowed
+search:
+  provider: fixture
+  fixture_corpus: tests/fixtures/web_corpus
+knowledge:
+  corpus_dir: tests/fixtures/corpus
+  baseline_initial_text: tests/fixtures/corpus/general_background.md
+  ontology_profile: tests/fixtures/ontology/profile.yaml
+simulators:
+  fixture.ridge:    {backend: fixture, fixture_function: ridge}
+  fixture.catalyst: {backend: fixture, fixture_function: catalyst}
+fixture:
+  researcher_policy: coordinate_search
+  consult_every: 0
+  invalid_request_rate_every: 7

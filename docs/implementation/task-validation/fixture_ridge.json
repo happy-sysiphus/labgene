@@ -1,0 +1,91 @@
+{
+  "task_id": "fixture_ridge",
+  "task_version": "1",
+  "task_hash": "9872daf26eb78ae23333ca7e8b1e9eaf00d2d698fdcdba13c190527e41fe2eeb",
+  "simulator_id": "fixture.ridge",
+  "simulator_version": "1",
+  "simulator_descriptor": null,
+  "created_at": "2026-09-28T06:51:09+00:00",
+  "status": "unvalidated",
+  "reasons": [
+    "artificial fixture: offline contract check, not a scientific model",
+    "paper evidence missing: doi, version",
+    "code evidence missing: repo, commit",
+    "license evidence missing: code",
+    "model weights sha256 not recorded",
+    "metric transform not recorded for: yield",
+    "no observed data: validation error vs data not measured",
+    "near-target residual not measured",
+    "success rule not mapped to the paper's goal"
+  ],
+  "development_only": true,
+  "paper": {},
+  "code": {},
+  "weights_sha256": {},
+  "license": {},
+  "inputs": {
+    "parameters": [
+      {
+        "kind": "continuous",
+        "name": "temperature",
+        "unit": "degC",
+        "min": 20.0,
+        "max": 120.0,
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "time",
+        "unit": "min",
+        "min": 1.0,
+        "max": 60.0,
+        "description": ""
+      }
+    ],
+    "constraints": []
+  },
+  "metrics": [
+    {
+      "name": "yield",
+      "unit": "%",
+      "direction": "maximize",
+      "transform": "unrecorded"
+    }
+  ],
+  "success_rule": {
+    "criteria": [
+      {
+        "metric": "yield",
+        "direction": "maximize",
+        "target": 90.0,
+        "tolerance": 1.0
+      }
+    ],
+    "all_required": true,
+    "paper_goal_mapping": "",
+    "identities": []
+  },
+  "determinism": {
+    "repeats": 2,
+    "points": 6,
+    "cache_hits": 0,
+    "fresh_adapter_per_repeat": true,
+    "identical": true
+  },
+  "range_check": {
+    "probes": 5,
+    "feasible": 5,
+    "distinct_feasible": 5,
+    "constraints": 0,
+    "all_metrics_finite": true
+  },
+  "validation_error": null,
+  "near_target_residual": null,
+  "known_success_summary": {
+    "checked": 1,
+    "valid": 1,
+    "succeeded": 1
+  },
+  "open_questions": [],
+  "notes": []
+}

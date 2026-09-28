@@ -1,0 +1,31 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-05
+status: draft_unreviewed
+domain: hypothesis_update
+task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {cure_temperature: 105.0, cure_time: 60.0}
+  results: {hardness: 0.08}
+  note:
+    hypotheses: ['H1: at 60 min, hardness rises with cure temperature from 105 to 130 degC']
+- kind: observation
+  id: a002
+  parameters: {cure_temperature: 115.0, cure_time: 60.0}
+  results: {hardness: 5.41}
+- kind: observation
+  id: a003
+  parameters: {cure_temperature: 130.0, cure_time: 60.0}
+  results: {hardness: 81.83}
+remaining_actions: 47
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+  grounding:
+    must_not_refute: [H1]
+rubric: [Keeps H1 (all three observations agree with it) without over-updating.]
+author_notes: 'No counterexample: the observations support H1.'

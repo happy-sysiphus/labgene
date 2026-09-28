@@ -1,0 +1,26 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-og-03
+status: draft_unreviewed
+domain: observation_grounding
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 60.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 79.81, selectivity: 90.34}
+- kind: invalid_experiment
+  id: a002
+  parameters: {temperature: 120.0, residence_time: 20.0, solvent: MeCN}
+- kind: observation
+  id: a003
+  parameters: {temperature: 65.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 84.42, selectivity: 87.12}
+remaining_actions: 47
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: not_duplicate}
+rubric: [Does not treat the invalid request a002 as an observation.]
+author_notes: a002 violated the heat budget and has no values. Citing it as an observation is a grounding error.

@@ -1,0 +1,22 @@
+# Offline fixture task (artificial). Multi-metric success rule + categorical + linear constraint.
+task_id: fixture_catalyst
+version: "1"
+title: "Fixture: catalyst screening with yield and TON"
+problem: >-
+  Choose catalyst, loading, temperature and residence time that satisfy BOTH the yield and the
+  TON targets under the thermal-budget constraint. Artificial deterministic function (offline only).
+parameters:
+  - {kind: categorical, name: catalyst, choices: [A, B, C, D]}
+  - {kind: continuous, name: loading, unit: "mol%", min: 0.5, max: 2.5}
+  - {kind: continuous, name: temperature, unit: degC, min: 30, max: 110}
+  - {kind: continuous, name: residence_time, unit: s, min: 60, max: 600}
+constraints:
+  - {coefficients: {temperature: 1.0, residence_time: 0.1}, op: "<=", rhs: 150.0, description: "thermal budget: temperature + 0.1*residence_time <= 150"}
+metrics:
+  - {name: yield, unit: "%", direction: maximize}
+  - {name: ton, unit: "1", direction: maximize}
+success:
+  - {metric: yield, direction: maximize, target: 80.0, tolerance: 2.0}
+  - {metric: ton, direction: maximize, target: 60.0, tolerance: 3.0}
+simulator_id: fixture.catalyst
+simulator_version: "1"

@@ -1,0 +1,5 @@
+# Offline smoke plan: first visits and revisits, both conditions, 2 independent set reps.
+set_id: smoke
+reps: 2
+conditions: [baseline, product]
+episodes: [fixture_ridge, fixture_catalyst, fixture_ridge]

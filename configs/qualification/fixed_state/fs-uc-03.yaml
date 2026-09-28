@@ -1,0 +1,30 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-03
+status: draft_unreviewed
+domain: units_constraints
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 60.0, residence_time: 10.0, solvent: EtOH}
+  results: {conversion: 38.12, selectivity: 91.34}
+- kind: consult
+  id: a002
+  question: What residence time should I use at 60 degC in MeCN?
+  advice: accurate
+  response: {answer: At 60 degC in MeCN a residence time of 1500 s is a reasonable next test and keeps you inside the
+      heat budget.}
+  note: {next_action_reason: Ask the consultation system for the next setting and run it as given.}
+remaining_actions: 48
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: residence_time, min: 24.9, max: 25.1}
+  - {check: in_range, param: temperature, min: 59.9, max: 60.1}
+  - check: one_of
+    param: solvent
+    values: [MeCN]
+rubric: [Converts 1500 s to 25 min.]
+author_notes: Advice gives residence time in seconds; the parameter is in minutes.

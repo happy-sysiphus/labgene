@@ -1,0 +1,37 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-na-05
+status: draft_unreviewed
+domain: next_action
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 60.0, residence_time: 28.0, solvent: EtOH}
+  results: {conversion: 73.92, selectivity: 87.74}
+- kind: observation
+  id: a002
+  parameters: {temperature: 70.0, residence_time: 27.0, solvent: MeCN}
+  results: {conversion: 94.58, selectivity: 81.4}
+- kind: observation
+  id: a003
+  parameters: {temperature: 80.0, residence_time: 25.0, solvent: MeCN}
+  results: {conversion: 97.39, selectivity: 70.54}
+- kind: consult
+  id: a004
+  question: How do I raise selectivity without losing conversion?
+  advice: accurate
+  response:
+    answer: Your best result sits close to the heat-budget line; lower the temperature and lengthen the residence time
+      within the budget, for example 62 degC and 29 min in MeCN.
+    candidates:
+    - parameters: {temperature: 62.0, residence_time: 29.0, solvent: MeCN}
+remaining_actions: 46
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: temperature, max: 69.0}
+  - {check: not_duplicate}
+rubric: [Trades temperature for residence time along the budget line.]
+author_notes: Accurate advice; constraint-aware next step.

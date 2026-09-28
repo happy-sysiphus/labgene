@@ -1,0 +1,30 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-hu-03
+status: draft_unreviewed
+domain: hypothesis_update
+counterexample: true
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 70.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 88.46, selectivity: 82.8}
+  note:
+    hypotheses: ['H1: toluene gives higher selectivity than MeCN at the same temperature and residence time', 'H2: MeCN
+        balances conversion and selectivity best']
+- kind: observation
+  id: a002
+  parameters: {temperature: 70.0, residence_time: 20.0, solvent: toluene}
+  results: {conversion: 94.58, selectivity: 75.8}
+remaining_actions: 48
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+  grounding:
+    must_not_support: [H1]
+rubric: ['Refutes H1: toluene raised conversion but lowered selectivity (obs:a002 vs obs:a001).']
+author_notes: 'Counterexample to the solvent hypothesis. Toluene is not excluded as a solvent: it can still succeed at
+  lower temperature.'

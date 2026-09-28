@@ -1,0 +1,7 @@
+# ALLOWED: equipment manual.
+url: https://manuals.fixture.example/thermostat-ts200
+title: TS-200 thermostat operating manual
+snippet: Setpoint ramps, jacket temperature limits and calibration of the TS-200 circulating thermostat.
+content: >-
+  Ramp the setpoint at no more than 5 degC/min. The jacket limit is 130 degC. Calibrate monthly against a
+  reference probe and log deviations above 0.5 degC.

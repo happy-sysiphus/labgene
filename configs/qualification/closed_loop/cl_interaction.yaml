@@ -1,0 +1,25 @@
+# DRAFT - needs independent review before T08. Researcher qualification only (spec §10.3): disjoint from the main
+# evaluation tasks and from the fixed-state suite, built on no answer paper, never injected into the main evaluation.
+id: cl-interaction
+status: draft_unreviewed
+type: interaction
+simulator: press_density
+author_notes: >-
+  Two continuous variables on a narrow tilted ridge (more pressure needs a longer hold). One-factor-at-a-time search
+  stalls.
+task:
+  task_id: qual_press_density
+  version: "1"
+  title: "Qualification: pressing pressure and hold time for green-body density"
+  problem: >-
+    Choose the pressing pressure and hold time of a powder compact so that its relative density reaches the public
+    target. Artificial deterministic response used for researcher qualification.
+  parameters:
+    - {kind: continuous, name: press_pressure, unit: MPa, min: 10, max: 200}
+    - {kind: continuous, name: press_time, unit: min, min: 5, max: 120}
+  metrics:
+    - {name: density, unit: "%", direction: maximize}
+  success:
+    - {metric: density, direction: maximize, target: 95.0, tolerance: 1.0}
+  simulator_id: qual.press_density
+  simulator_version: "1"

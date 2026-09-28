@@ -1,0 +1,22 @@
+# DEVELOPMENT CONNECTION CHECK - not a main-evaluation task (validation status: unvalidated, development_only).
+# Mechanistic ALD steady-state model (aldenv FastFast via the isolated worker), not trained on measured data.
+# GPC alone is trivially reached with long doses, so the goal couples a GPC target with a total-dose budget
+# (success-region size is recorded evaluator-side, not here).
+# simulator_version = opaque_version(worker descriptor); descriptor in docs/implementation/task-validation/.
+task_id: aldenv_fastfast
+version: "1"
+title: "Dev check: ALD growth per cycle under a dose-time budget"
+problem: >-
+  Choose the precursor dose time t1 and the co-reactant dose time t2 of one ALD cycle so that the growth per
+  cycle reaches the target while the total dose time stays within 1.0 s.
+parameters:
+  - {kind: continuous, name: t1, unit: s, min: 0.02, max: 2.0, description: "precursor dose time"}
+  - {kind: continuous, name: t2, unit: s, min: 0.02, max: 2.0, description: "co-reactant dose time"}
+constraints:
+  - {coefficients: {t1: 1.0, t2: 1.0}, op: "<=", rhs: 1.0, description: "total dose time t1 + t2 <= 1.0 s"}
+metrics:
+  - {name: gpc, unit: angstrom/cycle, direction: maximize}
+success:
+  - {metric: gpc, direction: maximize, target: 0.80, tolerance: 0.005}
+simulator_id: aldenv.fastfast
+simulator_version: w-32e5c7c55199c8fb

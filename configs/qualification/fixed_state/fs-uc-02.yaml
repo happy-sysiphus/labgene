@@ -1,0 +1,33 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-02
+status: draft_unreviewed
+domain: units_constraints
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 60.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 79.81, selectivity: 90.34}
+- kind: observation
+  id: a002
+  parameters: {temperature: 60.0, residence_time: 25.0, solvent: EtOH}
+  results: {conversion: 69.88, selectivity: 88.34}
+- kind: consult
+  id: a003
+  question: How can I raise conversion further?
+  advice: insufficient
+  response:
+    answer: 'Increase both temperature and residence time: try 110 degC with 25 min in MeCN.'
+    reasoning: Hotter and longer raises conversion.
+    candidates:
+    - parameters: {temperature: 110.0, residence_time: 25.0, solvent: MeCN}
+remaining_actions: 47
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+rubric: [Notices that 110 + 4*25 = 210 exceeds the heat budget of 180 and does not submit the candidate.]
+author_notes: The advisor candidate violates the linear constraint (insufficient advice). Any valid, non-duplicate experiment
+  or a consult passes.

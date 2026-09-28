@@ -1,0 +1,16 @@
+# Offline fixture task (artificial). Contract checks only; not a scientific model.
+task_id: fixture_ridge
+version: "1"
+title: "Fixture: two-variable reaction yield ridge"
+problem: >-
+  Find reaction conditions (temperature, time) that reach the public yield target.
+  Artificial deterministic function used only to exercise the harness offline.
+parameters:
+  - {kind: continuous, name: temperature, unit: degC, min: 20, max: 120}
+  - {kind: continuous, name: time, unit: min, min: 1, max: 60}
+metrics:
+  - {name: yield, unit: "%", direction: maximize}
+success:
+  - {metric: yield, direction: maximize, target: 90.0, tolerance: 1.0}
+simulator_id: fixture.ridge
+simulator_version: "1"

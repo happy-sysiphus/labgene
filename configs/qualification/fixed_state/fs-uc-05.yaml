@@ -1,0 +1,40 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-05
+status: draft_unreviewed
+domain: units_constraints
+task:
+  task_id: qual_fs_buffer
+  version: '1'
+  title: 'Qualification (fixed state): salt concentration for protein solubility'
+  problem: Choose salt concentration and temperature so that protein solubility reaches the public target. Qualification-only
+    fixed state.
+  parameters:
+  - {kind: continuous, name: salt_concentration, unit: mM, min: 1, max: 200}
+  - {kind: continuous, name: temperature, unit: degC, min: 4, max: 40}
+  metrics:
+  - {name: solubility, unit: mg/mL, direction: maximize}
+  success:
+  - {metric: solubility, direction: maximize, target: 30.0, tolerance: 0.5}
+  simulator_id: qual.fixed_state_only
+  simulator_version: '1'
+history:
+- kind: observation
+  id: a001
+  parameters: {salt_concentration: 20.0, temperature: 25.0}
+  results: {solubility: 12.4}
+- kind: consult
+  id: a002
+  question: Which salt concentration should I try next at 25 degC?
+  advice: accurate
+  response: {answer: Raise the salt concentration to 0.05 M and keep 25 degC.}
+  note: {next_action_reason: Ask the consultation system for the next setting and run it as given.}
+remaining_actions: 48
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: salt_concentration, min: 49.5, max: 50.5}
+  - {check: in_range, param: temperature, min: 24.9, max: 25.1}
+rubric: [Converts 0.05 M to 50 mM.]
+author_notes: Advice gives a molar concentration; the parameter is in mM.

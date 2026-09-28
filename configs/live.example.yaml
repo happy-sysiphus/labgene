@@ -1,0 +1,36 @@
+# Live development profile TEMPLATE. Copy to configs/live.yaml (git-ignored values stay in .env).
+# preflight refuses to run while any cost cap or unit price is unset. Unset != 0 != unlimited.
+profile_id: live-dev
+execution_mode: live_development
+roles:
+  researcher:       {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
+  advisor_baseline: {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
+  advisor_product:  {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
+  # Internal processing: provider not restricted (spec §10.1). Candidates, unvalidated:
+  internal_summarizer: {provider: openai, model: gpt-6-astra, endpoint: responses, reasoning_effort: high, max_output_tokens: 4096}
+  kg_extractor:        {provider: openai, model: gpt-6-astra, endpoint: responses, reasoning_effort: high, max_output_tokens: 4096}
+  leakage_gate:        {provider: anthropic, model: claude-fable-5-1, endpoint: messages, reasoning_effort: high, max_output_tokens: 2048}
+  embedder:            {provider: gemini, model: gemini-embedding-2, endpoint: embed_content, dimensions: 3072}
+limits:
+  development_only: true      # finite dev values; freeze before evaluation (spec §12)
+  provider_max_attempts: 3
+  provider_timeout_s: 180
+cost_caps:
+  max_calls: null             # REQUIRED: approved finite values
+  max_input_tokens: null
+  max_output_tokens: null
+  max_usd: null
+  max_wall_s: null
+  prices: {}                  # model -> {input_usd_per_mtok, output_usd_per_mtok}; fill from the provider's price page
+search:
+  provider: google_cse
+  max_results: 5
+knowledge:
+  corpus_dir: data/corpus
+  baseline_initial_text: data/corpus/general_background.md
+  ontology_profile: configs/ontology/profile.yaml
+simulators:
+  aldenv.fastfast: {backend: worker, python: .envs/aldenv/Scripts/python.exe, worker_module: labgene.simulators.worker, worker_args: [--backend, aldenv, --system, FastFast]}
+paths:
+  tasks_dir: configs/tasks
+  private_dir: private

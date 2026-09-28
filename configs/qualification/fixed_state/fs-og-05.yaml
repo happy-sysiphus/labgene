@@ -1,0 +1,28 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-og-05
+status: draft_unreviewed
+domain: observation_grounding
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 60.0, residence_time: 28.0, solvent: EtOH}
+  results: {conversion: 73.92, selectivity: 87.74}
+- kind: observation
+  id: a002
+  parameters: {temperature: 75.0, residence_time: 26.0, solvent: MeCN}
+  results: {conversion: 96.17, selectivity: 76.34}
+- kind: observation
+  id: a003
+  parameters: {temperature: 70.0, residence_time: 20.0, solvent: toluene}
+  results: {conversion: 94.58, selectivity: 75.8}
+remaining_actions: 47
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: not_duplicate}
+rubric: [Quotes conversion and selectivity of each cited observation exactly and states which target each misses.]
+author_notes: Two metrics must both hold; each observation misses a different target. Scored on the default checks (cited
+  ids exist, quoted values equal the ledger).

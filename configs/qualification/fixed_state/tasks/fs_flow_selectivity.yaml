@@ -1,0 +1,52 @@
+# Fixed-state-only public task (researcher qualification, spec §10.3). DRAFT - needs independent review.
+# Never run: fixed-state histories are recorded states whose values come from the evaluator-side reference
+# function qualification.FIXED_STATE_REFERENCES[simulator_id] (checked on load). Disjoint from the closed-loop
+# suite (other parameters, metrics and functions), so fixed-state content never discloses a closed-loop input.
+task_id: qual_fs_flow_selectivity
+version: '1'
+title: 'Qualification (fixed state): flow reactor conversion and selectivity under a heat budget'
+problem: Choose temperature, residence time and solvent of a flow reaction so that BOTH conversion and selectivity reach
+  their public targets without exceeding the heat-exposure budget. Artificial deterministic response used for researcher
+  qualification (fixed state).
+parameters:
+- kind: continuous
+  name: temperature
+  unit: degC
+  min: 20
+  max: 140
+- kind: continuous
+  name: residence_time
+  unit: min
+  min: 1
+  max: 30
+- kind: categorical
+  name: solvent
+  choices:
+  - MeCN
+  - EtOH
+  - toluene
+constraints:
+- coefficients:
+    temperature: 1.0
+    residence_time: 4.0
+  op: <=
+  rhs: 180.0
+  description: 'heat-exposure budget: temperature + 4*residence_time <= 180'
+metrics:
+- name: conversion
+  unit: '%'
+  direction: maximize
+- name: selectivity
+  unit: '%'
+  direction: maximize
+success:
+- metric: conversion
+  direction: maximize
+  target: 90.0
+  tolerance: 1.0
+- metric: selectivity
+  direction: maximize
+  target: 85.0
+  tolerance: 1.0
+simulator_id: qual.fs.flow_selectivity
+simulator_version: '1'

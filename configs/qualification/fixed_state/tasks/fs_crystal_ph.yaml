@@ -1,0 +1,26 @@
+# Fixed-state-only public task (researcher qualification, spec §10.3). DRAFT - needs independent review.
+# Never run: fixed-state histories are recorded states whose values come from the evaluator-side reference
+# function qualification.FIXED_STATE_REFERENCES[simulator_id] (checked on load). Disjoint from the closed-loop
+# suite (other parameters, metrics and functions), so fixed-state content never discloses a closed-loop input.
+task_id: qual_fs_crystal_ph
+version: '1'
+title: 'Qualification (fixed state): buffer pH for crystallization purity'
+problem: Choose the buffer pH of a crystallization step so that product purity reaches the public target. Artificial deterministic
+  response used for researcher qualification (fixed state).
+parameters:
+- kind: continuous
+  name: ph
+  unit: pH
+  min: 2
+  max: 12
+metrics:
+- name: purity
+  unit: '%'
+  direction: maximize
+success:
+- metric: purity
+  direction: maximize
+  target: 95.0
+  tolerance: 0.5
+simulator_id: qual.fs.crystal_ph
+simulator_version: '1'

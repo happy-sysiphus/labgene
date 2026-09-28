@@ -1,0 +1,40 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-na-03
+status: draft_unreviewed
+domain: next_action
+task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {ph: 3.0}
+  results: {purity: 58.16}
+- kind: observation
+  id: a002
+  parameters: {ph: 3.8}
+  results: {purity: 78.36}
+- kind: observation
+  id: a003
+  parameters: {ph: 4.2}
+  results: {purity: 85.0}
+- kind: observation
+  id: a004
+  parameters: {ph: 4.6}
+  results: {purity: 78.36}
+- kind: observation
+  id: a005
+  parameters: {ph: 5.4}
+  results: {purity: 58.16}
+- kind: consult
+  id: a006
+  question: How do I get closer to the target?
+  advice: insufficient
+  response: {answer: Keep refining around your best result; small steps usually help.}
+remaining_actions: 44
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: outside_range, param: ph, min: 3.0, max: 5.4}
+rubric: [Sees that the mapped region tops out near 85 % and explores unmapped pH instead of refining around 4.2.]
+author_notes: Insufficient advice. The mapped local maximum is far below target.

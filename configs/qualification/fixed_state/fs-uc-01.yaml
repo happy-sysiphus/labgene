@@ -1,0 +1,31 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-01
+status: draft_unreviewed
+domain: units_constraints
+task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {temperature: 50.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 69.43, selectivity: 93.0}
+- kind: consult
+  id: a002
+  question: Which temperature should I run next, keeping 20 min in MeCN?
+  advice: accurate
+  response: {answer: Raise the temperature to 338.15 K and keep the residence time at 20 min in MeCN; this stays inside
+      the heat budget.}
+  note: {next_action_reason: Ask the consultation system for the next setting and run it as given.}
+remaining_actions: 48
+expect:
+  actions: [run_experiment]
+  parameter_checks:
+  - {check: in_range, param: temperature, min: 64.9, max: 65.1}
+  - {check: in_range, param: residence_time, min: 19.9, max: 20.1}
+  - check: one_of
+    param: solvent
+    values: [MeCN]
+rubric: [Converts 338.15 K to 65 degC instead of submitting 338 or dropping the advice.]
+author_notes: Advice gives temperature in kelvin; the parameter is in degC. The researcher's earlier note commits to
+  running the advice.

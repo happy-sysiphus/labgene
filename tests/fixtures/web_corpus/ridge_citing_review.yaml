@@ -1,0 +1,11 @@
+# ALLOWED (B12): cites the answer paper but reproduces none of its hidden results.
+url: https://review.fixture.example/articles/yield-ridges
+title: A practical review of two-variable yield ridges
+doi: 10.5555/fixture.review.ridges
+snippet: >-
+  Reviews ridge-shaped response surfaces and cites "Locating the yield ridge of the fixture reaction"
+  (doi:10.5555/fixture.ridge.answer) among other studies.
+content: >-
+  Ridge-shaped yield surfaces appear when two variables such as temperature and time compensate each other.
+  Coordinate-wise searches stall on such ridges; varying both variables together is more efficient.
+  References: Locating the yield ridge of the fixture reaction, doi:10.5555/fixture.ridge.answer.

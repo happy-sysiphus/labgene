@@ -1,0 +1,23 @@
+# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
+# advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
+id: fs-uc-04
+status: draft_unreviewed
+domain: units_constraints
+task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
+history:
+- kind: observation
+  id: a001
+  parameters: {cure_temperature: 120.0, cure_time: 60.0}
+  results: {hardness: 21.85}
+- kind: invalid_experiment
+  id: a002
+  parameters: {cure_temperature: 120.0, cure_time: 150.0}
+remaining_actions: 48
+expect:
+  actions: [run_experiment, consult]
+  parameter_checks:
+  - {check: in_range, param: cure_time, max: 120.0}
+  - {check: not_duplicate}
+rubric: ['Reads the range error of a002 and stays inside [5, 120] min.']
+author_notes: History holds an out-of-range request with the harness error message. The next experiment must be valid.
