@@ -6,7 +6,7 @@ from labgene.config import Limits, RoleModel
 from labgene.costs import null_context
 from labgene.providers.base import ModelChangedError
 from labgene.providers.fixture import FixtureProvider
-from rag_eval.judge import Judge, fixture_judge
+from rag_eval.judge import Judge, JudgeInfraError, fixture_judge
 
 ROLE = RoleModel(provider="fixture", model="judge-m", endpoint="fixture", max_output_tokens=512)
 LIM = Limits(provider_backoff_s=0.0)
@@ -47,10 +47,16 @@ def test_useful_and_questions():
     assert make('{"questions": [], "noncommittal": false}').questions("ans", null_context()) is None
 
 
-def test_infra_errors_after_retries_are_unavailable_not_defaults():
+def test_infra_errors_after_retries_stop_the_evaluation():
     p = FixtureProvider(policy=lambda req: "{}", script=["infra_error"] * 3)
-    assert Judge(p, ROLE, LIM).questions("ans", null_context()) is None
+    with pytest.raises(JudgeInfraError):
+        Judge(p, ROLE, LIM).questions("ans", null_context())
     assert len(p.requests) == LIM.provider_max_attempts
+
+
+def test_a_refusal_is_unavailable_not_a_stop():
+    p = FixtureProvider(policy=lambda req: "{}", script=["refusal"])
+    assert Judge(p, ROLE, LIM).questions("ans", null_context()) is None
 
 
 def test_a_different_returned_model_stops_the_run():

@@ -1,6 +1,7 @@
 """LLM judge (spec §5): single-shot calls on the evaluation's judge role with JSON-schema outputs and a pinned prompt
-version. A failed or malformed reply leaves that metric unavailable (None), never a default. ModelChangedError and
-CapExceeded propagate: the evaluation stops and is resumed later."""
+version. A refused, truncated or malformed reply leaves that metric unavailable (None), never a default. A call that
+still fails after call_llm's finite retries (transport, timeout, usage limit) raises JudgeInfraError, and
+ModelChangedError and CapExceeded propagate: the evaluation stops and the same command resumes it later."""
 from __future__ import annotations
 
 import json
@@ -61,6 +62,11 @@ SCHEMAS: dict[str, dict[str, Any]] = {
 PROMPT_HASH = sha256_text(canonical_json([PROMPT_VERSION, CLAIMS, VERIFY, PRECISION, QUESTIONS, SCHEMAS]))
 
 
+class JudgeInfraError(Exception):
+    """The judge is unreachable after finite retries: stop and resume (as the harness does with infra failures)
+    instead of recording the rest of the sample as 'judge unavailable'."""
+
+
 class Judge:
     """The evaluation's judge role. Each method is ONE call through call_llm (costed, finite infra retries, model
     check)."""
@@ -75,6 +81,8 @@ class Judge:
                                 thinking_level=r.thinking_level, reasoning_effort=r.reasoning_effort,
                                 max_output_tokens=r.max_output_tokens)
         res = call_llm(self.provider, req, ctx, self.limits, r.allowed_returned_models)
+        if res.status is ProviderStatus.infra_error:
+            raise JudgeInfraError(f"{req.role}: {res.error or 'judge unreachable after retries'}")
         if res.status is not ProviderStatus.ok:
             return None
         try:

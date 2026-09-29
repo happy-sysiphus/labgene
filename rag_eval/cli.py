@@ -28,7 +28,7 @@ from .config import EvalConfig, load_config
 from .consults import (ConsultRecord, consult_records, consult_request, draw_sample, episode_orders, open_ledger,
                        set_finished)
 from .context import Blinder, Rebuilder, passages, retrieved_cards
-from .judge import PROMPT_HASH, PROMPT_VERSION, Judge, fixture_judge
+from .judge import PROMPT_HASH, PROMPT_VERSION, Judge, JudgeInfraError, fixture_judge
 from .metrics import answer_relevancy, citation_metrics, claim_metrics, context_precision, issue_counts
 from .report import build_items, split_sim, summarize, write_reports
 from .simscore import SimScorer
@@ -275,7 +275,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         print(json.dumps(_run(a), indent=1, ensure_ascii=False))
         return 0
-    except (CapExceeded, KnowledgeInfraError, ModelChangedError, SimulatorInfraError) as e:
+    except (CapExceeded, JudgeInfraError, KnowledgeInfraError, ModelChangedError, SimulatorInfraError) as e:
         print(json.dumps({"status": "stopped", "reason": type(e).__name__, "detail": str(e)}, ensure_ascii=False))
         return 3
     except (FileExistsError, FileNotFoundError, KeyError, ValueError) as e:

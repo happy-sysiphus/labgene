@@ -38,6 +38,24 @@ def test_end_to_end_offline_resume_and_the_target_run_untouched(offline_run, eva
     assert digest(offline_run) == before
 
 
+def test_a_judge_outage_stops_resumably_instead_of_recording_unavailable(offline_run, eval_config, tmp_path, capsys,
+                                                                         monkeypatch):
+    import rag_eval.cli as cli
+    from labgene.providers.fixture import FixtureProvider
+    from rag_eval.judge import fixture_judge
+    out = tmp_path / "eval"
+    with monkeypatch.context() as m:        # e.g. a subscription usage-limit window: every judge call fails
+        m.setattr(cli, "build_llm", lambda *a, **k: FixtureProvider(policy=fixture_judge,
+                                                                     script=["infra_error"] * 100))
+        assert main(args(offline_run, out, eval_config)) == 3
+    assert cli.read_lines(out / "judged.jsonl") == []                # nothing recorded as "unavailable"
+    assert main(args(offline_run, out, eval_config)) == 0            # the same command resumes once it is back
+    capsys.readouterr()
+    s = json.loads((out / "report.json").read_text(encoding="utf-8"))["summary"]
+    assert all(s["conditions"][c]["judge_unavailable"] == 0 and s["conditions"][c]["judged"] >= 1
+               for c in ("baseline", "product"))
+
+
 def test_refusals(offline_run, eval_config, tmp_path, capsys):
     assert main(args(offline_run, offline_run / "eval", eval_config)) == 2     # --out inside the target run
     out = tmp_path / "eval"
