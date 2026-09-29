@@ -1,8 +1,8 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-uc-02
-status: draft_unreviewed
+status: reviewed
 domain: units_constraints
 task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
 history:
@@ -21,13 +21,16 @@ history:
   response:
     answer: 'Increase both temperature and residence time: try 110 degC with 25 min in MeCN.'
     reasoning: Hotter and longer raises conversion.
+    limitations: Aimed at conversion only.
     candidates:
     - parameters: {temperature: 110.0, residence_time: 25.0, solvent: MeCN}
 remaining_actions: 47
 expect:
-  actions: [run_experiment, consult]
+  actions: [run_experiment]
   parameter_checks:
   - {check: not_duplicate}
 rubric: [Notices that 110 + 4*25 = 210 exceeds the heat budget of 180 and does not submit the candidate.]
-author_notes: The advisor candidate violates the linear constraint (insufficient advice). Any valid, non-duplicate experiment
-  or a consult passes.
+author_notes: >-
+  The advisor candidate violates the linear constraint (insufficient advice). As in the harness, the view flags it
+  (within_public_constraints false and a validation issue, finding uc-2). Any valid, non-duplicate experiment passes;
+  submitting the candidate is an invalid request.

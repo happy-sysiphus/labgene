@@ -135,6 +135,48 @@ def cmd_validate_gate(a) -> int:
     return 0 if res["passed"] else 4
 
 
+def cmd_regate_state(a) -> int:
+    """U39: re-gate another run's built initial states under this plan's answer bundles and set scope, as this run's
+    initial states (a later run imports them with knowledge.initial_state_from)."""
+    run, probs = _run_for_tool(a)
+    if probs:
+        return _blocked(probs)
+    src = Path(run.profile.resolve(run.profile.paths.artifacts_dir)) / a.from_run
+    try:
+        reports = run.regate_initial_states(src, workers=a.workers)
+    except ValueError as e:
+        return _blocked([str(e)])
+    finally:
+        run.session_line("regate-state", source=a.from_run)
+    _print({"run_id": run.manifest.run_id, "source_run": a.from_run,
+            "initial_state_hashes": run.manifest.initial_state_hashes,
+            "conditions": {c: {"withdrawn": len(r["withdrawn"]), "still_allowed": r["still_allowed"]}
+                           for c, r in reports.items()},
+            "import_with": f"knowledge.initial_state_from: {run.run_dir.as_posix()}"})
+    return 0
+
+
+def cmd_extend_plan(a) -> int:
+    """U40: continue a stopped run under a longer progression plan. Every started set's state is re-gated in place
+    under the new plan's answer bundles first; then `resume` continues the sets."""
+    from .app import Run
+    run = Run.load(_run_dir(a))
+    seed = Path(run.profile.resolve(run.profile.paths.artifacts_dir)) / a.seed_run if a.seed_run else None
+    try:
+        out = run.extend_plan(load_set_plan(a.plan), workers=a.workers, seed=seed)
+    except ValueError as e:
+        return _blocked([str(e)])
+    finally:
+        run.session_line("extend-plan", plan=a.plan, seed_run=a.seed_run)
+    _print({"run_id": run.manifest.run_id, "set_plan_hash": run.manifest.set_plan_hash,
+            "states": {k: {"withdrawn": len(v["knowledge"].get("withdrawn", [])) if isinstance(v["knowledge"], dict)
+                           else v["knowledge"],
+                           "consults_rechecked": v["consults"]["rechecked"],
+                           "consults_withheld": v["consults"]["withheld"]} for k, v in out["states"].items()},
+            "next": f"python -m labgene resume --run-id {run.manifest.run_id}"})
+    return 0
+
+
 def cmd_validate_retrieval(a) -> int:
     """T08.5: retrieval configs on a pre-fixed dev set over a restored copy of this run's product initial state."""
     from .app import build_checker, build_embedder, build_ontology, build_reranker
@@ -169,64 +211,56 @@ def cmd_validate_retrieval(a) -> int:
 
 
 def cmd_qualify_researcher(a) -> int:
-    """T08.3 / spec §10.3: 24 fixed-state tasks + 3 closed-loop types x reps with the NEUTRAL general advisor
-    (baseline advisor, fresh memory and restored baseline initial state per episode)."""
-    from .advisors.baseline import BaselineAdvisor
-    from .advisors.fixture_policy import make_fixture_advisor_policy
-    from .app import _llm, build_checker, build_search_provider
-    from .config import FixtureBehaviour
-    from .evaluation.qualification import (load_closed_loop, load_fixed_state, qualification_verdict,
-                                           run_closed_loop, run_fixed_state)
-    from .knowledge.build import load_baseline_initial
-    from .knowledge.gated import GatedSearch
-    from .knowledge.store import KnowledgeStore
-    from .memory.baseline import BaselineTextMemory
-    from .memory.snapshot import restore_state
+    """T08.3 / spec §10.3, U18: the 24 fixed-state tasks (no closed-loop episodes, no advisor). With --adjudications F
+    (a mapping of audited case id -> critical | not_critical) it re-decides this run's stored result instead, without
+    any model call."""
+    from .app import _llm
+    from .config import FixtureBehaviour, _load_yaml
+    from .evaluation.qualification import load_fixed_state, qualification_verdict, run_fixed_state
     from .researcher.agent import PlannerReviewerResearcher
     from .researcher.fixture_policy import make_fixture_policy
     run, probs = _run_for_tool(a)
     if probs:
         return _blocked(probs)
-    p, lim, suite = run.profile, run.profile.limits, Path(a.suite)
-    rpolicy = make_fixture_policy(p.fixture or FixtureBehaviour()) if p.roles.researcher.provider == "fixture" else None
-    researcher = PlannerReviewerResearcher(_llm(p, "researcher", rpolicy), p.roles.researcher, lim)
-    role = p.roles.advisor_baseline
-    stores = []
-
-    def make_components(scope, state_dir):
-        restore_state(run.run_dir / "initial" / "baseline", state_dir)
-        store = KnowledgeStore(state_dir, build_checker(p), run.bundles(), run.plan.set_id,
-                               retrieval=p.knowledge.retrieval, execution_mode=p.execution_mode)
-        stores.append(store)
-        summ = None if p.roles.internal_summarizer.provider == "fixture" else _llm(p, "internal_summarizer")
-        memory = BaselineTextMemory(state_dir, scope.memory_scope, summ, lim,
-                                    summarizer_role=p.roles.internal_summarizer if summ else None,
-                                    gate_derived=store.gate, tasks={})
-        policy = make_fixture_advisor_policy("baseline") if role.provider == "fixture" else None
-        advisor = BaselineAdvisor(_llm(p, "advisor_baseline", policy), role, lim, memory=memory, store=store,
-                                  search=GatedSearch(store, build_search_provider(p, run.guard),
-                                                     max_results=p.search.max_results,
-                                                     max_chars=lim.max_tool_response_chars),
-                                  initial_text=load_baseline_initial(state_dir))
-        return researcher, advisor, memory
-
-    lock = suite / "input.lock.json"
-    try:
-        run.build_initial_states()
-        fixed = run_fixed_state(researcher, load_fixed_state(suite / "fixed_state"), _tool_ctx(run, "qualification"),
-                                lim, execution_mode=p.execution_mode, input_lock=lock)
-        closed = run_closed_loop(make_components, load_closed_loop(suite / "closed_loop"), a.reps,
-                                 run.run_dir / "qualification", lim, guard=run.guard, execution_mode=p.execution_mode,
-                                 revalidated=a.revalidated, input_lock=lock)
-    finally:
-        for s in stores:
-            s.close()
-        run.session_line("qualify-researcher", revalidated=a.revalidated)
-    verdict = qualification_verdict(fixed, closed)
-    out = _write(run, "qualification", {"fixed_state": fixed, "closed_loop": closed, "verdict": verdict})
+    p, suite = run.profile, Path(a.suite)
+    if a.adjudications:
+        fixed = json.loads((run.run_dir / "qualification.json").read_text(encoding="utf-8"))["fixed_state"]
+    else:
+        rpolicy = make_fixture_policy(p.fixture or FixtureBehaviour()) if p.roles.researcher.provider == "fixture" \
+            else None
+        researcher = PlannerReviewerResearcher(_llm(p, "researcher", rpolicy), p.roles.researcher, p.limits)
+        lock = None if p.execution_mode == "offline_fixture" else suite / "input.lock.json"   # fixtures never pin
+        try:
+            fixed = run_fixed_state(researcher, load_fixed_state(suite / "fixed_state"),
+                                    _tool_ctx(run, "qualification"), p.limits, execution_mode=p.execution_mode,
+                                    input_lock=lock)
+        finally:
+            run.session_line("qualify-researcher")
+    verdict = qualification_verdict(fixed, adjudications=_load_yaml(a.adjudications) if a.adjudications else None)
+    out = _write(run, "qualification", {"fixed_state": fixed, "verdict": verdict})
     _print({"verdict": verdict["verdict"], "failures": verdict["failures"], "pending": verdict["pending"],
             "development_only": verdict["development_only"], "result": str(out)})
     return 0 if verdict["verdict"] == "pass" else 4
+
+
+def cmd_recall_probe(a) -> int:
+    """U23/U28: ask the researcher model (its role config) for the answer paper's optimum of each plan task and judge
+    recall evaluator-side against the private reference point. Exit 4 on recall_positive or incomplete."""
+    from .app import _llm
+    from .evaluation.recall_probe import run_recall_probe
+    run, probs = _run_for_tool(a)
+    if probs:
+        return _blocked(probs)
+    refs = {t: run.private[t].validity_evidence["reference_points"][0]["parameters"] for t in run.tasks}
+    try:
+        res = run_recall_probe(_llm(run.profile, "researcher"), run.profile.roles.researcher, run.profile.limits,
+                               list(run.tasks.values()), refs, _tool_ctx(run, "recall_probe"))
+    finally:
+        run.session_line("recall-probe")
+    out = _write(run, "recall_probe", res)   # answers name the paper's conditions: run dir only
+    _print({"verdict": res["verdict"], "recalled": [r["task_id"] for r in res["tasks"] if r["recalled"]],
+            "result": str(out)})
+    return 0 if res["verdict"] == "no_recall" else 4
 
 
 def cmd_resume(a) -> int:
@@ -298,6 +332,11 @@ def main(argv: list[str] | None = None) -> int:
     add("run-set", cmd_run_set, "profile", "plan", "run", "revalidated")
     add("run-evaluation", lambda a: cmd_run_set(a, evaluation=True), "profile", "plan", "run", "revalidated")
     add("resume", cmd_resume, "run", "revalidated")
+    s = add("extend-plan", cmd_extend_plan, "run")
+    s.add_argument("--plan", required=True, help="the longer progression plan (its set name is replaced by the run's)")
+    s.add_argument("--workers", type=int, default=4, help="concurrent gate checks (the decisions do not depend on it)")
+    s.add_argument("--seed-run", help="run id whose initial states were re-gated for the same answer bundles "
+                                      "(`regate-state`); its verdicts are reused")
     add("report", cmd_report, "run")
     s = add("validate-task", cmd_validate_task, "profile")
     s.add_argument("task_id")
@@ -309,11 +348,19 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cases", required=True)
     s = add("validate-retrieval", cmd_validate_retrieval, "profile", "plan", "run")
     s.add_argument("--devset", required=True)
-    s = add("qualify-researcher", cmd_qualify_researcher, "profile", "plan", "run", "revalidated")
+    add("recall-probe", cmd_recall_probe, "profile", "plan", "run")
+    s = add("regate-state", cmd_regate_state, "profile", "plan", "run")
+    s.add_argument("--from-run", required=True, help="run id (under the artifacts dir) whose built initial states "
+                                                     "are re-gated for this plan (U39)")
+    s.add_argument("--workers", type=int, default=4, help="concurrent gate checks (the decisions do not depend on it)")
+    s = add("qualify-researcher", cmd_qualify_researcher, "profile", "plan", "run")
     s.add_argument("--suite", default="configs/qualification")
-    s.add_argument("--reps", type=int, default=3)
+    s.add_argument("--adjudications", help="YAML/JSON: audited case id -> critical | not_critical (re-decides the "
+                                           "stored result of --run-id; no model call)")
 
     a = ap.parse_args(argv)
+    from .config import load_dotenv, repo_root_for
+    load_dotenv(repo_root_for(Path.cwd() / "x") / ".env")
     from .costs import CapExceeded
     from .faults import InjectedCrash
     from .knowledge.gate import KnowledgeInfraError

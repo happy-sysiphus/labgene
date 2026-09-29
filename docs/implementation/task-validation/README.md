@@ -8,7 +8,7 @@ Private halves (known success inputs, reference-point and near-target rows) go t
 |---|---|---|
 | fixture_ridge, fixture_catalyst | unvalidated | artificial fixture (offline contract check only) |
 | aldenv_fastfast | unvalidated, development_only | harness connection check; mechanistic model, no measured data |
-| summit_reizman_case1 | unvalidated (candidate) | success exists only where the model's TON breaks its own yield / loading (blocking reason); plus open questions in its report (tolerances, Table 1 not jointly reproduced, no held-out split, CSV/paper mismatch, ...) |
+| suzuki_flow_01 | unvalidated (candidate) | U13: TON derived as yield / loading, rule A (the model at the paper's optimum conditions, tolerance 3; 5 of 54,264 grid points, random-50 success 0.46 %). Remaining open questions: no held-out split, CSV/paper calibration mismatch, public domain description, CSV failure-record completeness, difficulty pilot |
 
 ## Rebuild the isolated worker envs (git-ignored `.envs/`)
 
@@ -31,7 +31,7 @@ numpy 1.23.5 instead of upstream `poetry.lock`'s 1.22.4: the torch 1.13.1 wheel 
 ## Run
 
 ```sh
-.venv/Scripts/python -m labgene.simulators.task_validation summit_reizman_case1
+.venv/Scripts/python -m labgene.simulators.task_validation suzuki_flow_01
 .venv/Scripts/python -m pytest tests/science -q        # skips when .envs/ or private/ assets are missing
 ```
 

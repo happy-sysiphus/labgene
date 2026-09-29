@@ -66,6 +66,7 @@ class AdoptionRule(Strict):
     primary: Metric
     tie_break: list[Literal["recall_at_k", "mrr", "cost_rank"]]
     cost_rank: dict[str, int]            # lower = cheaper
+    min_recall_at_k: float | None = None # U31 acceptance bar for the chosen config (None = comparison only)
 
 
 class DevSet(Strict):
@@ -158,8 +159,11 @@ def adopt(results: dict[str, dict[str, Any]], rule: AdoptionRule) -> dict[str, A
     def key(n: str) -> tuple:
         return (-ran[n][rule.primary], *[rule.cost_rank[n] if t == "cost_rank" else -ran[n][t] for t in rule.tie_break])
 
-    return {"chosen": min(ran, key=key) if ran else None, "complete": len(ran) == len(results),
-            "not_run": sorted(set(results) - set(ran))}
+    chosen = min(ran, key=key) if ran else None
+    out = {"chosen": chosen, "complete": len(ran) == len(results), "not_run": sorted(set(results) - set(ran))}
+    if (bar := rule.min_recall_at_k) is not None:   # U31: the chosen config must also reach an absolute bar
+        out.update(min_recall_at_k=bar, meets_bar=None if chosen is None else ran[chosen]["recall_at_k"] >= bar)
+    return out
 
 
 def run_retrieval_validation(store: KnowledgeStore, dev: DevSet, ctx: CallContext,

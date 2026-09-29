@@ -1,0 +1,198 @@
+{
+  "task_id": "suzuki_flow_01",
+  "task_version": "1",
+  "task_hash": "04d8aaabb6566ffdeb25acffc8c97c1c65614489008673f1d82071f72ade9d0c",
+  "simulator_id": "sim.suzuki_c1",
+  "simulator_version": "w-565fbd39f5cf2dcc",
+  "simulator_descriptor": "summit@1de682d05e97adcfb96cd8376e876cef2d6160d3;src_sha256=f18e3c04985f8258b9a796f835a97d4ea6ba2c7938b9ff7b61c42468e5cdcbf0;env_sha256=56678f335e29697885294f2c6bad7a941949810b3f7981a0820a9c7fc4544cbd;model=reizman_suzuki_case_1;model_files_sha256=f75c55892b132078860c5f0b0c5b2546fa8f73c8798efe51fedc40cdd8f35052;clip=True;ensemble=mean;ton=derived:yield/catalyst_loading;catalysts=public-names-v1",
+  "created_at": "2026-09-28T15:56:28+00:00",
+  "status": "validated",
+  "reasons": [],
+  "development_only": false,
+  "paper": {
+    "doi": "10.1039/C6RE00153J",
+    "version": "React. Chem. Eng., 2016, 1, 658-666 (open access PMC5123644, CC BY 3.0)",
+    "title": "Suzuki-Miyaura cross-coupling optimization enabled by automated feedback",
+    "goal": "maximize TON subject to reaction yield > 90 % of the maximum yield (Table 1 case I: yield 82 %, TON 69)"
+  },
+  "code": {
+    "repo": "https://github.com/sustainable-processes/summit",
+    "commit": "1de682d05e97adcfb96cd8376e876cef2d6160d3",
+    "package_version": "0.8.9",
+    "model": "summit.benchmarks.get_pretrained_reizman_suzuki_emulator(case=1): 5-ANN ensemble mean, clip=True; catalysts addressed by public names (worker SUMMIT_CATALYSTS)"
+  },
+  "weights_sha256": {
+    "reizman_suzuki_case_1.json": "aa422530bbd570faba98ef357ca01fb299da234ae5ac1eb2b1d39da9a1821052",
+    "reizman_suzuki_case_1_predictor_0.pt": "51a9f0fca51b9efb60d0e9cd3a4ebc297ffad7762fd763fc2f5c0af98f5035ee",
+    "reizman_suzuki_case_1_predictor_1.pt": "bb674125d33e90de45cfb434bdc3381537f1661f1027ae0ee0179de6af4badf4",
+    "reizman_suzuki_case_1_predictor_2.pt": "e5b051f295a11628d5bbab9a1c676d181e2ea02fea221255c6f83876f8f59159",
+    "reizman_suzuki_case_1_predictor_3.pt": "ced73fadbb4d9d6531e57433cab9d803d1d233535302583d47d3c008897a81d2",
+    "reizman_suzuki_case_1_predictor_4.pt": "34df24076e9bca4e779c4153158e7a8e1c09b4fa5227b61f89142358e76cf695",
+    "model_dir_files_sha256": "f75c55892b132078860c5f0b0c5b2546fa8f73c8798efe51fedc40cdd8f35052"
+  },
+  "license": {
+    "code": "MIT (Summit)",
+    "paper": "CC BY 3.0 (RSC open access)",
+    "data": "CSV and weights ship in the MIT-licensed Summit repo; original measurements from Reizman et al. 2016"
+  },
+  "inputs": {
+    "parameters": [
+      {
+        "kind": "categorical",
+        "name": "catalyst",
+        "choices": [
+          "PCy3 Pd G3",
+          "PPh3 Pd G3",
+          "PtBu3 Pd G3",
+          "RuPhos Pd G3",
+          "SPhos Pd G3",
+          "Xantphos Pd G3",
+          "XPhos Pd G2",
+          "XPhos Pd G3"
+        ],
+        "description": "palladium precatalyst: ligand + palladacycle generation"
+      },
+      {
+        "kind": "continuous",
+        "name": "residence_time",
+        "unit": "s",
+        "min": 60.0,
+        "max": 600.0,
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "temperature",
+        "unit": "degC",
+        "min": 30.0,
+        "max": 110.0,
+        "description": ""
+      },
+      {
+        "kind": "continuous",
+        "name": "catalyst_loading",
+        "unit": "mol%",
+        "min": 0.5,
+        "max": 2.5,
+        "description": ""
+      }
+    ],
+    "constraints": []
+  },
+  "metrics": [
+    {
+      "name": "yield",
+      "unit": "%",
+      "direction": "maximize",
+      "transform": "identity (%); ensemble mean of 5 ANNs, clipped to [0, 100]"
+    },
+    {
+      "name": "ton",
+      "unit": "1",
+      "direction": "maximize",
+      "transform": "derived (U13/U22): yield(%) / catalyst_loading(mol%); the ANN's own TON output is not used"
+    }
+  ],
+  "success_rule": {
+    "criteria": [
+      {
+        "metric": "yield",
+        "direction": "maximize",
+        "target": 78.67,
+        "tolerance": 7.0
+      },
+      {
+        "metric": "ton",
+        "direction": "maximize",
+        "target": 65.56,
+        "tolerance": 7.0
+      }
+    ],
+    "all_required": true,
+    "paper_goal_mapping": "Paper goal: maximize TON subject to yield > 90 % of the maximum yield. U22: TON derived as yield / loading; anchor = the emulator at the paper's Table 1 case I optimum conditions, held privately (yield 78.67, derived TON 65.56); tolerance 7.0 on each = the smallest multiple of 0.5 whose 50-uniform-random-grid-pick success is >= 2 % (27 of 54,264 grid points, 2.46 %).",
+    "identities": [
+      {
+        "metric": "ton",
+        "numerator": "yield",
+        "denominator": "catalyst_loading"
+      }
+    ]
+  },
+  "determinism": {
+    "repeats": 2,
+    "points": 99,
+    "cache_hits": 0,
+    "fresh_adapter_per_repeat": true,
+    "identical": true
+  },
+  "range_check": {
+    "probes": 72,
+    "feasible": 72,
+    "distinct_feasible": 72,
+    "constraints": 0,
+    "all_metrics_finite": true
+  },
+  "validation_error": {
+    "rows": 96,
+    "rows_outside_public_rules": 30,
+    "basis": "",
+    "per_metric": {
+      "yield": {
+        "n": 96,
+        "mean_residual": 0.6662042609415952,
+        "mae": 5.932541710976512,
+        "rmse": 7.623938517774653,
+        "max_abs": 19.850464248657225
+      },
+      "ton": {
+        "n": 96,
+        "mean_residual": 0.9088137891187563,
+        "mae": 4.721142100457662,
+        "rmse": 6.859286756301086,
+        "max_abs": 24.206061840057373
+      }
+    }
+  },
+  "near_target_residual": {
+    "definition": "data rows whose OBSERVED values meet the public success rule",
+    "per_metric": {
+      "yield": {
+        "n": 17,
+        "mean_residual": -3.6236101935891543,
+        "mae": 5.6188329360064335,
+        "rmse": 7.516118151007718,
+        "max_abs": 16.335446166992185
+      },
+      "ton": {
+        "n": 17,
+        "mean_residual": -3.2076429593261313,
+        "mae": 4.914578308935404,
+        "rmse": 6.630482021149027,
+        "max_abs": 14.763875377027304
+      }
+    },
+    "reference_points": {
+      "paper_table1_case_1_optimum": {
+        "yield": -3.3306503295898438,
+        "ton": -3.4422086079915317
+      }
+    }
+  },
+  "known_success_summary": {
+    "checked": 27,
+    "valid": 27,
+    "succeeded": 27,
+    "identity_consistent": 27
+  },
+  "open_questions": [],
+  "notes": [
+    "U24 accepted limitation: held-out validation error unavailable (upstream stores no train/test split); error vs the CSV includes training rows.",
+    "U24 accepted limitation: paper/CSV calibration mismatch (CSV rows near the paper optimum can exceed Table 1); success is defined on the emulator's own outputs, results are a within-simulator comparison.",
+    "U24 accepted limitation: completeness of failure records in the CSV not verified; the emulator never fails an experiment.",
+    "U22 difficulty calibration: 27 of 54,264 grid points succeed; 50 uniform random grid picks succeed with probability 2.46 %; success catalysts: 1. The pilot (U28) checks case 1 in both conditions.",
+    "U23: public text names the substrates, the fixed base/solvent and the precatalysts by commercial names; the paper's codes are mapped only inside the worker.",
+    "Known success inputs: every U22 success point on the grid, re-evaluated through the worker (27 evaluated).",
+    "Worker env .envs/summit: CPython 3.10.20, torch 1.13.1 (CPU), skorch 0.11.0, scikit-learn 1.2.1, pandas 1.5.3, scipy 1.10.0, numpy 1.23.5. Upstream poetry.lock pins numpy 1.22.4, which is ABI-incompatible with the torch 1.13.1 wheel ('module compiled against API version 0x10'); 1.23.5 satisfies upstream's numpy ^1.21.",
+    "Upstream code unmodified; the clone is imported via sys.path (not installed)."
+  ]
+}

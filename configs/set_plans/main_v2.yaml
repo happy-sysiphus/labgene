@@ -1,0 +1,10 @@
+# U44 main evaluation v2 (2026-09-29): the same Reizman cases 1-4, with the objective made strict (maximize TON at
+# yield >= 95 % of the emulator's best; the TON threshold is evaluator-held). Progression c1 -> c4, a task retried
+# until cleared, 300 actions per condition, both conditions in parallel, one set rep (U26/U27 rules unchanged).
+set_id: main_v2
+reps: 1
+conditions: [baseline, product]
+mode: progression
+episodes: [suzuki_ton_01, suzuki_ton_02, suzuki_ton_03, suzuki_ton_04]
+action_budget: 300
+parallel_conditions: true

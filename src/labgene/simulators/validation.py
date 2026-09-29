@@ -44,6 +44,7 @@ def validate_parameters(task: PublicTask, raw: Any) -> ValidParameters | Invalid
         lhs = sum(coef * out[k] for k, coef in c.coefficients.items())
         ok = {"<=": lhs <= c.rhs + c.tolerance, ">=": lhs >= c.rhs - c.tolerance,
               "==": abs(lhs - c.rhs) <= c.tolerance}[c.op]
-        if not ok:
-            return InvalidParameters(reason=f"constraint violated: {c.description or c.coefficients} {c.op} {c.rhs}")
+        if not ok:   # a description that states its bound is shown alone (no doubled '<= 180 <= 180.0')
+            what = c.description if c.op in c.description else f"{c.description or c.coefficients} {c.op} {c.rhs}"
+            return InvalidParameters(reason=f"constraint violated: {what}")
     return ValidParameters(parameters=out)

@@ -273,21 +273,41 @@ class Run:
     def bundles(self):
         return [a.answer_bundle for a in self.private.values()]
 
+    def _pending_snapshot(self, cond: str) -> Path | None:
+        """This condition's initial snapshot dir if it still has to be made (None if done). An interrupted snapshot
+        (the manifest is written last) is kept aside and redone."""
+        snap = self.run_dir / "initial" / cond
+        if (snap / "manifest.json").exists():
+            return None
+        if snap.exists():
+            n = 1
+            while (aside := snap.parent / f"{cond}.partial-{n}").exists():
+                n += 1
+            snap.rename(aside)
+        return snap
+
+    def _record_initial_states(self) -> dict[str, str]:
+        hashes = {c: json.loads((self.run_dir / "initial" / c / "manifest.json").read_text(encoding="utf-8"))
+                  ["combined_sha256"] for c in self.plan.conditions}
+        if self.manifest.initial_state_hashes and self.manifest.initial_state_hashes != hashes:
+            raise RuntimeError("initial state snapshots differ from the run manifest")
+        self.manifest.initial_state_hashes = hashes
+        self.write_manifest()
+        return hashes
+
     def build_initial_states(self) -> dict[str, str]:
-        """Build + snapshot each condition's initial state once per run (idempotent: existing snapshots are kept)."""
+        """Build + snapshot each condition's initial state once per run (idempotent: existing snapshots are kept).
+        With knowledge.initial_state_from the snapshots are copied from that run instead (U39)."""
         from .knowledge.build import build_initial_state
         from .memory.snapshot import snapshot_state
         p, k = self.profile, self.profile.knowledge
+        if k.initial_state_from:
+            return self._import_initial_states(p.resolve(k.initial_state_from))
         checker, embedder, onto, extractor = build_checker(p), build_embedder(p), build_ontology(p), build_extractor(p)
         for cond in self.plan.conditions:
-            snap = self.run_dir / "initial" / cond
-            if (snap / "manifest.json").exists():
+            snap = self._pending_snapshot(cond)
+            if snap is None:
                 continue
-            if snap.exists():   # interrupted snapshot (manifest is written last): keep it aside, redo
-                n = 1
-                while (aside := snap.parent / f"{cond}.partial-{n}").exists():
-                    n += 1
-                snap.rename(aside)
             ctx = CallContext(sink=self._prebuild_sink, phase="prebuild", guard=self.guard,
                               scope_key=f"{self.manifest.run_id}/{cond}/{self.plan.set_id}/initial")
             build = self.run_dir / "build" / cond
@@ -299,13 +319,184 @@ class Run:
             (build.parent / f"{cond}.build.json").write_text(json.dumps(info, indent=1, ensure_ascii=False),
                                                               encoding="utf-8")
             snapshot_state(build, snap)
-        hashes = {c: json.loads((self.run_dir / "initial" / c / "manifest.json").read_text(encoding="utf-8"))
-                  ["combined_sha256"] for c in self.plan.conditions}
-        if self.manifest.initial_state_hashes and self.manifest.initial_state_hashes != hashes:
-            raise RuntimeError("initial state snapshots differ from the run manifest")
-        self.manifest.initial_state_hashes = hashes
+        return self._record_initial_states()
+
+    def _import_initial_states(self, src: Path) -> dict[str, str]:
+        """U39: copy another run's initial snapshots (built or re-gated under THIS run's gate identity: answer bundles,
+        set scope, checker). A frozen evaluation also checks them against the hashes pinned at freeze."""
+        from .knowledge.store import gate_identity
+        from .memory.snapshot import copy_snapshot
+        want = gate_identity(self.bundles(), self.plan.set_id, build_checker(self.profile))
+        pinned = None
+        if self.manifest.frozen and self.profile.frozen_manifest:
+            pinned = json.loads(self.profile.resolve(self.profile.frozen_manifest).read_text(encoding="utf-8"))
+            pinned = pinned.get("initial_states")
+        for cond in self.plan.conditions:
+            snap = self._pending_snapshot(cond)
+            if snap is not None:
+                copy_snapshot(src / "initial" / cond, snap)
+            state = _state_table(self.run_dir / "initial" / cond / "state" / "knowledge.sqlite")
+            if state.get("gate_identity") != want or state.get("regate_status") not in (None, "done"):
+                raise ValueError(f"the {cond} initial state of {src} is not gated under this run's answer bundles and "
+                                 f"set scope '{self.plan.set_id}': re-gate it for this plan (`regate-state`)")
+        hashes = self._record_initial_states()
+        if pinned is not None and pinned != hashes:
+            raise RuntimeError("imported initial states differ from the hashes pinned at freeze")
+        self.manifest.evidence_hashes.update({f"initial_state_from:{c}": h for c, h in hashes.items()})
         self.write_manifest()
         return hashes
+
+    def extend_plan(self, plan: SetPlan, workers: int = 1, seed: Path | None = None) -> dict[str, Any]:
+        """U40: continue this run's sets under a longer progression plan (the same conditions and reps, the old tasks
+        as a prefix, a budget at least as large; the set name is kept because every stored scope uses it). Each
+        started set's state is re-gated in place under the new plan's answer bundles first (knowledge artifacts and
+        stored consult answers, never loosened); the plan is switched last, so a crash never leaves a half-checked
+        state usable (the old plan's identity no longer opens it, the new plan is not written yet). seed: a run
+        whose initial states were re-gated for these bundles (`regate-state`), whose verdicts are reused."""
+        from .harness.runner import TERMINAL, progression_replay_problems
+        from .knowledge.regate import regate_state
+        from .knowledge.store import KnowledgeStore, gate_identity
+        from .memory.snapshot import snapshot_state
+        old, plan = self.plan, plan.model_copy(update={"set_id": self.plan.set_id})
+        probs = [m for bad, m in [
+            (old.mode != "progression" or plan.mode != "progression", "only progression plans are extended"),
+            (plan.conditions != old.conditions or plan.reps != old.reps, "conditions and reps must stay the same"),
+            (plan.episodes[:len(old.episodes)] != old.episodes, "the old tasks must be a prefix of the new ones"),
+            ((plan.action_budget or 0) < (old.action_budget or 0), "the set action budget cannot shrink")] if bad]
+        if probs:
+            raise ValueError("cannot extend the plan: " + "; ".join(probs))
+        tasks = load_tasks(self.profile, plan)
+        private = load_private(self.profile, list(tasks))
+        bundles = [a.answer_bundle for a in private.values()]
+        p, k = self.profile, self.profile.knowledge
+        checker, embedder, onto = build_checker(p), build_embedder(p), build_ontology(p)
+        seeds = {}
+        if seed is not None:
+            sid = load_set_plan(seed / "set_plan.yaml").set_id
+            for cond in plan.conditions:
+                # a finished re-gate's snapshot, or a stopped one's build dir: every cached verdict is one complete
+                # check of this checker for these bundles, so an unfinished seed simply seeds fewer items
+                db = next((d for d in (seed / "initial" / cond / "state" / "knowledge.sqlite",
+                                       seed / "build" / cond / "knowledge.sqlite") if d.exists()), None)
+                if db is None or _state_table(db).get("gate_identity") != gate_identity(bundles, sid, checker):
+                    raise ValueError(f"the seed {seed} was not re-gated for these answer bundles and checker")
+                seeds[cond] = (db, sid)
+        L = Ledger(self.run_dir)
+        try:
+            eps = L.db.execute("SELECT episode_id, condition, set_rep, task_id, outcome, finalization FROM episodes "
+                               "WHERE set_id=?", (plan.set_id,)).fetchall()
+            open_eps = [e["episode_id"] for e in eps if e["outcome"] not in {o.value for o in TERMINAL}
+                        or e["finalization"] != "done"]
+            if open_eps:
+                raise ValueError(f"episodes still open or unsaved: {open_eps}; resume the run to finish them first")
+            scopes = [MemoryScope(run_id=self.manifest.run_id, condition=cond, set_id=plan.set_id, set_rep=rep)
+                      for rep in range(1, plan.reps + 1) for cond in plan.conditions]
+            for ms in scopes:               # refuse before anything changes
+                if not (self.run_dir / "state" / ms.condition / plan.set_id / f"rep{ms.set_rep}" /
+                        "knowledge.sqlite").exists():
+                    raise ValueError(f"set {ms.key} has not started; only started sets are extended")
+                replay = progression_replay_problems(L, plan, ms)
+                if replay:
+                    raise ValueError(f"set {ms.key} would not resume under the new plan: {replay[0]}")
+            want = gate_identity(bundles, plan.set_id, checker)
+            reports = {}
+            for ms in scopes:
+                rep, cond = ms.set_rep, ms.condition
+                state = self.run_dir / "state" / cond / plan.set_id / f"rep{rep}"
+                current = _state_table(state / "knowledge.sqlite")
+                # nothing to re-decide: built under this identity (consults were gated at finalization under it), or
+                # re-gated for it with the stored consult answers re-checked as well
+                if current.get("gate_identity") == want and (current.get("regate_status") is None or (
+                        current.get("regate_status") == "done" and current.get("consults_regated") == want)):
+                    reports[ms.key] = {"knowledge": "unchanged gate identity", "consults": {"rechecked": 0,
+                                                                                           "withheld": []}}
+                    continue
+                backup = self.run_dir / "extend-backup" / f"{cond}-rep{rep}-{old.hash[:12]}"
+                if not (backup / "manifest.json").exists():   # the state as it was before the first extension
+                    snapshot_state(state, backup)
+                ctx = CallContext(sink=self._prebuild_sink, phase="prebuild", guard=self.guard,
+                                  scope_key=f"{ms.key}/extend")
+                product = cond == "product"
+                kw = dict(embedder=embedder if product else None, ontology=onto if product else None,
+                          retrieval=k.retrieval.model_copy(update={"reranker": "none"}),
+                          execution_mode=p.execution_mode)
+                knowledge = regate_state(state, checker, bundles, plan.set_id, ctx,
+                                         baseline_source=f"corpus:{Path(k.baseline_initial_text).name}",
+                                         corpus_dir=p.resolve(k.corpus_dir), workers=workers, seed=seeds.get(cond),
+                                         **kw)
+                consults = _regate_consults(state, ms, [e for e in eps if e["condition"] == cond
+                                                        and e["set_rep"] == rep], L,
+                                            KnowledgeStore(state, checker, bundles, plan.set_id, **kw), ctx)
+                _set_state(state / "knowledge.sqlite", "consults_regated", want)
+                reports[ms.key] = {"knowledge": knowledge, "consults": consults}
+            out = {"from_plan": old.model_dump(mode="json"), "to_plan": plan.model_dump(mode="json"),
+                   "states": reports}
+            (self.run_dir / f"extend-{plan.hash[:12]}.json").write_text(json.dumps(out, indent=1, ensure_ascii=False),
+                                                                     encoding="utf-8")
+            # the switch, last: the manifest first (extra task hashes still load the old plan, which cannot open the
+            # re-gated states, so a kill in between fails closed and `extend-plan` is simply re-run), then the plan
+            self.manifest.evidence_hashes[f"set_plan_before_extend:{plan.hash[:12]}"] = old.hash
+            self.manifest.set_plan, self.manifest.set_plan_hash = plan.model_dump(mode="json"), plan.hash
+            self.manifest.tasks = {**self.manifest.tasks, **{t: payload_hash(v) for t, v in tasks.items()}}
+            self.tasks = tasks
+            self.write_manifest()
+            (self.run_dir / "set_plan.yaml").write_text(yaml.safe_dump(plan.model_dump(mode="json"), sort_keys=False,
+                                                                       allow_unicode=True), encoding="utf-8")
+            self.plan, self.private = plan, private
+            return out
+        finally:
+            L.close()
+
+    def regate_initial_states(self, source: Path, workers: int = 1) -> dict[str, Any]:
+        """U39: take another run's built initial states (same knowledge inputs, KG extractor and embedder) and
+        re-gate every approved item under this run's answer bundles and set scope, then snapshot them as this
+        run's initial states. Idempotent; a gate error leaves the condition to finish on the next call."""
+        from .knowledge.regate import regate_state
+        from .memory.snapshot import restore_state, snapshot_state, state_dir_hash, verify_snapshot
+        src = Run.load(source)
+        probs = same_knowledge(src, self.profile)
+        if probs:
+            raise ValueError("cannot re-gate another run's initial states:\n- " + "\n- ".join(probs))
+        p, k = self.profile, self.profile.knowledge
+        checker, embedder, onto = build_checker(p), build_embedder(p), build_ontology(p)
+        reports = {}
+        for cond in self.plan.conditions:
+            build = self.run_dir / "build" / cond
+            out = build.parent / f"{cond}.regate.json"
+            snap = self._pending_snapshot(cond)
+            if snap is None:
+                reports[cond] = json.loads(out.read_text(encoding="utf-8"))
+                continue
+            origin = {"run_id": src.manifest.run_id, "initial_sha256": src.manifest.initial_state_hashes.get(cond)}
+            marker = build.parent / f"{cond}.source.json"
+            if not build.exists():                    # restore aside, then rename: a kill never leaves half a copy
+                tmp = build.parent / f"{cond}.restoring"
+                restore_state(src.run_dir / "initial" / cond, tmp)   # an older partial tmp is moved aside
+                tmp.rename(build)
+            if not marker.exists():                   # restored but not yet re-gated: it must be the source's state
+                if state_dir_hash(build) != verify_snapshot(src.run_dir / "initial" / cond)["combined_sha256"]:
+                    raise ValueError(f"{build} is not an untouched copy of {src.manifest.run_id}'s {cond} state; "
+                                     "use a new run id")
+                marker.write_text(json.dumps(origin), encoding="utf-8")
+            elif json.loads(marker.read_text(encoding="utf-8")) != origin:
+                raise ValueError(f"the {cond} state being re-gated in this run came from another source than "
+                                 f"{src.manifest.run_id}; finish it with that source or use a new run id")
+            ctx = CallContext(sink=self._prebuild_sink, phase="prebuild", guard=self.guard,
+                              scope_key=f"{self.manifest.run_id}/{cond}/{self.plan.set_id}/regate")
+            product = cond == "product"
+            rep = regate_state(build, checker, self.bundles(), self.plan.set_id, ctx,
+                               baseline_source=f"corpus:{Path(k.baseline_initial_text).name}", corpus_dir=p.resolve(k.corpus_dir),
+                               embedder=embedder if product else None, ontology=onto if product else None,
+                               retrieval=k.retrieval.model_copy(update={"reranker": "none"}),
+                               execution_mode=p.execution_mode, workers=workers)
+            reports[cond] = {**rep, "source_run": src.manifest.run_id,
+                             "source_initial_sha256": src.manifest.initial_state_hashes.get(cond)}
+            out.write_text(json.dumps(reports[cond], indent=1, ensure_ascii=False), encoding="utf-8")
+            snapshot_state(build, snap)
+        self.manifest.evidence_hashes.update({f"regated_from:{src.manifest.run_id}:{c}": h
+                                              for c, h in src.manifest.initial_state_hashes.items()})
+        self._record_initial_states()
+        return reports
 
     # ------------------------------------------------ per-scope components
     def factory(self, ms: MemoryScope, fresh: bool) -> ConditionComponents:
@@ -366,7 +557,8 @@ class Run:
             """Memory content + every other state file (knowledge db, indexes, caches): spec 8.1 start/end hash."""
             return sha256_text(memory.state_hash() + state_dir_hash(state, exclude=("memory.sqlite",)))
         return ConditionComponents(researcher=researcher, advisor=advisor, memory=memory, simulators=sims,
-                                   tasks=self.tasks, close=close, state_hash=whole_state_hash)
+                                   tasks=self.tasks, close=close, state_hash=whole_state_hash,
+                                   hidden_success={t: a.hidden_success_thresholds for t, a in self.private.items()})
 
     # ------------------------------------------------ execution
     def execute(self, revalidated: bool = False) -> SetRunStatus:
@@ -412,7 +604,12 @@ def run_preflight(profile: Profile, plan: SetPlan) -> list[str]:
         if t.simulator_id not in profile.simulators:
             out.append(f"simulators.{t.simulator_id} missing (task {t.task_id})")
     try:
-        load_private(profile, list(tasks))
+        private = load_private(profile, list(tasks))
+        for t in tasks.values():   # U44: every declared hidden criterion needs its evaluator threshold
+            missing = {h.metric for h in t.hidden_success} - \
+                {c.metric for c in private[t.task_id].hidden_success_thresholds}
+            if missing:
+                out.append(f"task {t.task_id}: hidden criteria {sorted(missing)} have no evaluator threshold")
     except (OSError, ValueError) as e:
         out.append(f"private assets: {e}")
     for f, what in ((profile.knowledge.corpus_dir, "knowledge.corpus_dir"),
@@ -420,10 +617,13 @@ def run_preflight(profile: Profile, plan: SetPlan) -> list[str]:
                     (profile.knowledge.baseline_initial_text, "knowledge.baseline_initial_text")):
         if f is not None and not profile.resolve(f).exists():
             out.append(f"{what} not found: {f}")
+    out += [f"knowledge.initial_state_from: the {c} snapshot is {h}"
+            for c, h in (initial_state_pins(profile, plan) or {}).items() if h.startswith("unavailable")]
     if profile.execution_mode != "offline_fixture":
         dev = [d for d in development_only_components(profile) if d != "limits.development_only"]
-        if profile.execution_mode == "evaluation" or dev:
-            out += [f"development-only component not allowed in {profile.execution_mode}: {d}" for d in dev]
+        if profile.execution_mode == "live_development":   # stand-in models/search never; dev DATA is recorded
+            dev = [d for d in dev if d.startswith(("roles.", "search."))]
+        out += [f"development-only component not allowed in {profile.execution_mode}: {d}" for d in dev]
     if profile.execution_mode == "evaluation":
         out += evaluation_problems(profile, plan, tasks)
     return out
@@ -465,11 +665,113 @@ def _tree_sha256(path: Path | None) -> str | None:
                                for p in files))
 
 
+def _state_table(db: Path) -> dict[str, str]:
+    """The key/value `state` table of a knowledge.sqlite (read only; {} if absent)."""
+    import sqlite3
+    from contextlib import closing
+    if not db.exists():
+        return {}
+    with closing(sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)) as con:
+        return dict(con.execute("SELECT key, value FROM state").fetchall())
+
+
+def _regate_consults(state: Path, ms: MemoryScope, eps: list, ledger: Ledger, store: Any,
+                     ctx: CallContext) -> dict[str, Any]:
+    """U40: stored consult answers that are not withheld are gated again with the text and context finalization gated
+    them with (memory.baseline._gate_consults), under the store's current identity; a non-allow verdict withholds
+    them from now on. Idempotent (verdicts are cached; withholding is one row update)."""
+    import sqlite3
+    from contextlib import closing
+    from .contracts import GateStatus, canonical_json
+    from .knowledge.gate import KnowledgeInfraError
+    product, out = ms.condition == "product", {"rechecked": 0, "withheld": []}
+    try:
+        with closing(sqlite3.connect(state / "memory.sqlite")) as con:
+            for e in eps:
+                for c in ledger.consults(e["episode_id"]):
+                    q = ("SELECT withheld FROM consult_cases WHERE action_id=?", c.action_id) if product else \
+                        ("SELECT withheld FROM records WHERE record_id=?", f"consult:{c.action_id}")
+                    row = con.execute(q[0], (q[1],)).fetchone()
+                    if row is None or row[0]:          # never stored, or withheld already: nothing to re-decide
+                        continue
+                    st = store.gate(canonical_json(c), {"kind": "consult_answer", "action_id": c.action_id,
+                                                        "episode_id": e["episode_id"], "task_id": e["task_id"],
+                                                        "scope_key": ms.key}, ctx)
+                    if st == GateStatus.error:
+                        raise KnowledgeInfraError(f"leakage gate unavailable for consult {c.action_id}; re-run")
+                    out["rechecked"] += 1
+                    if st != GateStatus.allow:
+                        with con:
+                            con.execute(*(("UPDATE consult_cases SET withheld=1 WHERE action_id=?", (c.action_id,))
+                                          if product else ("UPDATE records SET withheld=1 WHERE record_id=?",
+                                                           (f"consult:{c.action_id}",))))
+                        out["withheld"].append(c.action_id)
+    finally:
+        store.close()
+    return out
+
+
+def _set_state(db: Path, key: str, value: str) -> None:
+    import sqlite3
+    from contextlib import closing
+    with closing(sqlite3.connect(db)) as con, con:
+        con.execute("INSERT OR REPLACE INTO state VALUES (?, ?)", (key, value))
+
+
+def same_knowledge(src: Run, profile: Profile) -> list[str]:
+    """U39: a re-gated state must be what this profile would build: the same KG extractor and embedder roles, the
+    same knowledge config, the corpus files the source ingested (their stored hashes) and the same baseline text."""
+    from .knowledge.build import BASELINE_INITIAL_ID
+    from .knowledge.parse import parse_document
+    a, out = src.profile, []
+    for role in ("kg_extractor", "embedder"):
+        if getattr(a.roles, role) != getattr(profile.roles, role):
+            out.append(f"roles.{role} differs from the source run {src.manifest.run_id}")
+    if a.knowledge.model_dump(exclude={"initial_state_from"}) != \
+            profile.knowledge.model_dump(exclude={"initial_state_from"}):
+        out.append(f"the knowledge config differs from the source run {src.manifest.run_id}")
+    if a.limits.baseline_initial_text_max_chars != profile.limits.baseline_initial_text_max_chars:
+        out.append("limits.baseline_initial_text_max_chars differs from the source run")
+    init = src.run_dir / "initial"
+    ingested = {k.removeprefix("ingested:doc:"): v
+                for k, v in _state_table(init / "product" / "state" / "knowledge.sqlite").items()
+                if k.startswith("ingested:doc:")}
+    corpus = profile.resolve(profile.knowledge.corpus_dir)
+    if ingested != {p.stem: sha256_text(p.read_text(encoding="utf-8")) for p in sorted(corpus.glob("*.md"))}:
+        out.append("the corpus files differ from the ones the source run ingested")
+    base = init / "baseline" / "state" / "knowledge.sqlite"
+    if base.exists() and profile.knowledge.baseline_initial_text:
+        import sqlite3
+        from contextlib import closing
+        doc = parse_document(profile.resolve(profile.knowledge.baseline_initial_text).read_text(encoding="utf-8"),
+                             "baseline_initial")
+        text = doc.text[doc.body:][:profile.limits.baseline_initial_text_max_chars]
+        with closing(sqlite3.connect(f"file:{base.as_posix()}?mode=ro", uri=True)) as con:
+            row = con.execute("SELECT content_hash FROM artifacts WHERE id=?", (BASELINE_INITIAL_ID,)).fetchone()
+        if row is None or row[0] != sha256_text(text):
+            out.append("the baseline initial text differs from the source run's")
+    return out
+
+
+def initial_state_pins(profile: Profile, plan: SetPlan) -> dict[str, str] | None:
+    """U39: imported initial states are pinned by content: each condition's snapshot hash, after verifying its files."""
+    from .memory.snapshot import verify_snapshot
+    if not profile.knowledge.initial_state_from:
+        return None
+    src, out = profile.resolve(profile.knowledge.initial_state_from), {}
+    for c in plan.conditions:
+        try:
+            out[c] = verify_snapshot(src / "initial" / c)["combined_sha256"]
+        except (OSError, ValueError) as e:
+            out[c] = f"unavailable: {type(e).__name__}"
+    return out
+
+
 def freeze_digest(profile: Profile, plan: SetPlan, tasks: dict[str, PublicTask]) -> dict[str, Any]:
     """What a frozen evaluation pins (spec §12): configuration, code, prompts AND the knowledge/evaluator inputs by
     content (corpus, baseline initial text, ontology profile, answer bundles, task validation reports). The profile
-    hash excludes the frozen_manifest pointer itself. Initial-state snapshot hashes are per run (they embed build
-    times), so the inputs are pinned instead."""
+    hash excludes the frozen_manifest pointer itself. A built initial state embeds build times, so a run that builds
+    its own is pinned by its inputs; an imported one (knowledge.initial_state_from, U39) by its snapshot hashes."""
     prof = profile.model_dump(mode="json", exclude={"root", "frozen_manifest"})
     root, k = Path(profile.root), profile.knowledge
     private = load_private(profile, list(tasks))
@@ -481,7 +783,8 @@ def freeze_digest(profile: Profile, plan: SetPlan, tasks: dict[str, PublicTask])
                                  "baseline_initial_text": _tree_sha256(profile.resolve(k.baseline_initial_text)),
                                  "ontology_profile": _tree_sha256(profile.resolve(k.ontology_profile))},
             "answer_bundles": {t: payload_hash(a.answer_bundle) for t, a in private.items()},
-            "task_validation_reports": {t: _tree_sha256(root / TASK_VALIDATION_DIR / f"{t}.json") for t in tasks}}
+            "task_validation_reports": {t: _tree_sha256(root / TASK_VALIDATION_DIR / f"{t}.json") for t in tasks},
+            "initial_states": initial_state_pins(profile, plan)}
 
 
 def freeze(profile: Profile, plan: SetPlan, analysis_plan: Path, out: Path) -> dict[str, Any]:

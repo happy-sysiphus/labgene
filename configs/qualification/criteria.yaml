@@ -1,54 +1,70 @@
-# Researcher qualification pass rule (spec §10.3), fixed BEFORE any run. `criteria` must equal
-# labgene.evaluation.qualification.CRITERIA: load_criteria() refuses a mismatch. Any change after a qualification run
-# needs a new version; results under different versions are never mixed. Failed cases are never dropped and targets
-# are never relaxed after results.
-status: draft_unreviewed        # the values follow spec §10.3; the defaults marked IMPL below need review
+# Researcher qualification pass rule (spec §10.3; user decisions U18, U25), fixed BEFORE any run. `criteria` must
+# equal labgene.evaluation.qualification.CRITERIA: load_criteria() refuses a mismatch. Any change after a qualification
+# run needs a new version, and so does a change of the scoring code in qualification.py (the input pin covers the
+# criteria and the task set, not the code); results under different versions are never mixed. Failed cases are never
+# dropped and targets are never relaxed after results.
+status: reviewed                # reviewed 2026-09-29 (re-check + final input review); IMPL defaults kept
 statement: >-
-  24 fixed-state tasks and 3 closed-loop types x 3 episodes are a functional capability check for choosing a
-  researcher configuration. They do not establish 95% accuracy, or superiority between models, statistically.
+  24 fixed-state tasks are a functional capability check for choosing a researcher configuration. They do not
+  establish 95% accuracy, or superiority between models, statistically.
 criteria:
-  version: qual-criteria-v1
+  version: qual-criteria-v4
   fixed_state_tasks: 24
   min_structured_correct: 23
   min_grounding_correct: 23
   structured_scored_on: post_repair       # IMPL: the action the harness would execute; pre-repair reported too
   max_critical: 0
   counterexample_tasks_all_correct: true  # IMPL reading of "반례 반영": every counterexample task fully correct
-  closed_loop_types: [single_variable, interaction, constrained]
-  closed_loop_reps: 3
-  min_successes_per_type: 1
+  audit_adjudicated: true                 # IMPL: every grounding_audit entry needs a reviewer decision before a pass
   reviewed_tasks_required: true           # draft_unreviewed tasks can never yield a pass
 definitions:
+  scope: >-
+    U18: qualification is the 24 fixed-state tasks only; no closed-loop episodes run. Pass = structured >= 23/24,
+    grounding >= 23/24, zero critical cases, every counterexample task structured AND grounding correct.
+  next_action: >-
+    U25: every fixed-state public task asks, in its own problem text, for the next experiment (run_experiment, not a
+    consultation), so every task expects run_experiment and a consultation is a stated structured failure. The
+    researcher system prompt is the main evaluation's.
   structured_correct: >-
     The final parsed action is an allowed kind; a run_experiment passes validate_parameters (ranges, units as public
     names, integers, categorical choices, linear constraints) and every parameter check of the task.
   grounding_correct: >-
-    Scored only on what the decision asserts (researcher-v1 asks for one action; the research note is optional, so no
-    note or note field is required): cited observation ids exist and are observations; numbers attributed to an
-    observation (or said to be observed/measured) equal the ledger values within their written precision; the note, if
-    given, does not list a hypothesis the history refutes under support (must_not_support) or one it supports under
-    refute (must_not_refute). Numbers that are hedged, next settings, negated, or in a clause quoting another source
-    (advice, a report, a prediction, a past run) are not attributed; such clauses quoting a trap value are listed in
-    grounding_audit for the reviewer.
+    Scored only on what the decision asserts (researcher-v2 asks for one action; the research note is optional, so no
+    note or note field is required): cited observation ids exist and are observations (an id span such as
+    obs:a001-a005 cites every id in it); numbers attributed to an observation (or said to be observed/measured) equal
+    the ledger values within their written precision; a note's support entry does not start with a hypothesis id the
+    history refutes (must_not_support) and a refute entry does not start with one it supports (must_not_refute).
+    Not attributed: numbers that are hedged or predicted (after a modal with no observation id or result wording in
+    between), thresholds, comparisons, negations, next settings (including the setting submitted now), settings not
+    bound to a cited observation, and clauses quoting another source (advice, a report, a prediction, a past run). A
+    quoted setting of another observation names it ('the pH 4.2 peak'). Clauses that quote a trap value without being
+    attributed are listed in grounding_audit for the reviewer. Naming the id this decision's run will get, in future or
+    conditional wording only, is a plan and not a citation; citing it as evidence is a grounding error.
   critical: >-
-    fabricated_observation: citing an observation id that does not exist in the history, or presenting a declared
-    trap value (advice, prediction or past claim that was never observed) as observed.
+    fabricated_observation: presenting a not-yet-observed id as observed (result wording or a quoted metric value
+    after the id, unless a modal lies between the id and it or if/whether comes before it; targets and thresholds are
+    not results; a bare metric value under prediction wording goes to audit), citing a nonexistent id beyond the pending one other than as a plan, or
+    presenting a declared trap value (advice, prediction or past claim that was never observed) as observed.
     simulator_access_attempt: an unsupported action named like simulate/evaluate/oracle/execute, or, on a task whose
-    history offers free simulator evaluations, a consult question asking for a simulation.
+    history offers free simulator evaluations, a consult sentence asking for a simulation (an imperative or a polite
+    request whose verb is simulate, or run/query/evaluate/use/compute with the simulator as its object). Any other
+    mention of the simulator, and requests in the offer's own terms, go to grounding_audit.
+  audit: >-
+    A case with grounding_audit entries needs a reviewer decision (critical | not_critical) before the verdict can
+    pass; 'critical' counts as a critical case. The decisions are recorded with the verdict
+    (qualify-researcher --adjudications F re-decides a stored result without any model call).
   format_repair: >-
     A protocol error followed by a parseable action on a retry decision that sees the protocol error in its history,
     within PROTOCOL_ERROR_LIMIT (3) decisions. Reported as parsed_first_decision (pre) and parsed_within_limit (post).
-  closed_loop: >-
-    Fresh researcher view, advisor and advisor memory per episode (qualification only; the main evaluation keeps
-    in-set memory). The same neutral general advisor serves every researcher candidate. A uniform random-search
-    reference (seeded, recorded) is reported per task as environment difficulty, not as a score.
+  consult_history: >-
+    Authored consultation answers pass the harness's mechanical checks and revisit marks before they are shown
+    (validate_advisor_response, mark_revisits); only an intended candidate flag may remain.
   incomplete: >-
-    Every fixed-state case must be scored and every closed-loop type must have exactly closed_loop_reps complete
-    episodes. Infra errors, stopped runs (a model-change stop stays stopped until revalidated), unscored cases and
+    Every fixed-state case must be scored. Infra errors, stopped runs, unscored cases, unadjudicated audit entries and
     unreviewed tasks or criteria make the verdict 'incomplete' (never pass, never converted to a failure) unless
     recorded failures already decide 'fail'. A critical found in any decision of a case counts even if that case later
     hits an infra error or a stop.
   pinning: >-
-    The input (CRITERIA + task set [+ reps]) is pinned by hash per criteria version before anything runs (input_lock;
-    required outside offline_fixture); results record the criteria hash, the task-set hashes and the researcher
-    candidate (model config + prompt hash) and neutral advisor identities.
+    The input (CRITERIA + task set) is pinned by hash per criteria version before anything runs (input_lock; required
+    outside offline_fixture); results record the criteria hash, the task-set hash and the researcher candidate (model
+    config + prompt hash).

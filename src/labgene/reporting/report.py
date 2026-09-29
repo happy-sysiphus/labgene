@@ -46,7 +46,7 @@ EPISODE_COLS = ("run_id", "condition", "set_id", "set_rep", "episode_order", "ep
                 "visit", "outcome", "outcome_reason", "success", "actions_used", "actions_to_success",
                 "consultation_requests", "experiment_attempts", "experiment_evaluations", "invalid_experiment_requests",
                 "protocol_errors_total", "finalization", "finalization_reason", "interruptions", "resumes",
-                "interruption_reasons", "memory_hash_start", "memory_hash_end")
+                "interruption_reasons", "memory_hash_start", "memory_hash_end", "action_budget")
 ACTION_COLS = ("run_id", "condition", "set_id", "set_rep", "episode_id", "episode_order", "task_id", "visit_index",
                "action_number", "action_id", "kind", "counted_as", "parameters", "results", "invalid_reason",
                "meets_success_criteria", "best_so_far_results", "best_so_far_gap", "best_so_far_action_id")
@@ -73,6 +73,16 @@ DEFINITIONS = {
                    "the set pair (baseline and product at the same set_rep). Only set reps complete in both "
                    "conditions are paired",
     "physical_attempts": "every CostEvent is one physical operation/attempt; retries = events with attempt > 1",
+    "progression_set": "U26: tasks in plan order; an attempt that fails (budget exhausted or protocol error) is "
+                       "retried as a new episode of the same task (advisor memory kept), a success moves to the next "
+                       "task; the set ends when every task is cleared or the set action budget is used; the last "
+                       "attempt may get fewer than 50 actions (truncated, counted in truncated_attempts and in "
+                       "success_at_50 with its own budget)",
+    "progression_primary": "U27: per (condition, set_rep), more tasks cleared within the set action budget is "
+                           "better; tie -> fewer total actions used. With fewer than 2 complete set pairs the "
+                           "comparison is descriptive (no interval, no significance claim)",
+    "actions_to_clear": "actions used by the failed attempts at a task plus actions_to_success of the attempt that "
+                        "cleared it; empty for a task not cleared",
     "tokens": "sum over REPORTED values only; counted over model calls only (llm_call: all fields; embedding: "
               "input_tokens), so simulator/gate/retrieval/search/finalize events are never 'unavailable'; "
               "'unavailable' = model calls whose endpoint did not report the value (never counted as 0); sum is "
@@ -83,7 +93,8 @@ DEFINITIONS = {
                    "the role's configured model + allowed_returned_models (manifest.models; researcher_* -> "
                    "researcher; roles without a config: returned vs recorded); 'unverified' if the event carries no "
                    "provider-returned model (e.g. calls through knowledge.gate.guarded_generate record one model "
-                   "string only); else 'ok'",
+                   "string only) or the provider cannot report the model it ran (model_verified=false: the Codex "
+                   "CLI records its pinned -m); else 'ok'",
     "analysis_reps": "set reps complete in EVERY planned condition; condition means and progression use only these, "
                      "so the conditions are never compared over different rep sets",
     "privacy_scan": "second layer after whitelisted fields: harness-authored strings are scanned for private content "
@@ -124,7 +135,7 @@ def build_report(run_dir: Path, manifest: dict) -> dict:
         finally:
             if L is not None:
                 L.close()
-    sets = [_set_metrics([r for r in episodes if (r["condition"], r["set_rep"]) == (c, rep)])
+    sets = [_set_metrics([r for r in episodes if (r["condition"], r["set_rep"]) == (c, rep)], plan, (c, rep))
             for rep in range(1, plan.reps + 1) for c in plan.conditions]
     pre = run_dir / "prebuild_costs.jsonl"
     prebuild = [CostEvent.model_validate_json(ln) for ln in pre.read_text(encoding="utf-8").splitlines()
@@ -216,6 +227,8 @@ def _vocab(value: str | None, allowed: set[str]) -> str | None:
 
 def _episode_rows(L: Ledger | None, plan: SetPlan, run_id: str) -> list[dict[str, Any]]:
     """One row per PLANNED episode (not_started included). Ledger episodes outside the plan are an error."""
+    if plan.mode == "progression":
+        return _progression_rows(L, plan, run_id)
     found = {} if L is None else {
         (r["run_id"], r["set_id"], r["condition"], r["set_rep"], r["episode_order"]): r["episode_id"]
         for r in L.db.execute("SELECT episode_id, run_id, condition, set_id, set_rep, episode_order FROM episodes")}
@@ -231,6 +244,42 @@ def _episode_rows(L: Ledger | None, plan: SetPlan, run_id: str) -> list[dict[str
                                          L.episode_events(eid) if eid else []))
     if found:
         raise ValueError(f"ledger has episodes outside this run's set plan: {sorted(found.values())}")
+    return rows
+
+
+def _progression_rows(L: Ledger | None, plan: SetPlan, run_id: str) -> list[dict[str, Any]]:
+    """Progression sets (U26): the episodes the ledger holds, in order. Each must have the scope the progression
+    rule derives from the outcomes before it (task, visit, budget), as the runner enforces; a non-terminal episode
+    can only be the last one. Anything else (or an episode outside this run's plan) is an error."""
+    if L is None:
+        return []
+    by: dict[tuple[str, int], list[str]] = defaultdict(list)
+    for r in L.db.execute("SELECT episode_id, run_id, set_id, condition, set_rep FROM episodes ORDER BY episode_order"):
+        if (r["run_id"], r["set_id"]) != (run_id, plan.set_id) or r["condition"] not in plan.conditions \
+                or not 1 <= r["set_rep"] <= plan.reps:
+            raise ValueError(f"ledger has episodes outside this run's set plan: {r['episode_id']}")
+        by[(r["condition"], r["set_rep"])].append(r["episode_id"])
+    rows = []
+    for rep in range(1, plan.reps + 1):
+        for cond in plan.conditions:
+            used, k, visits, open_ = 0, 0, Counter(), False
+            for n, eid in enumerate(by.pop((cond, rep), []), start=1):
+                st = L.state(eid)
+                if open_ or k >= len(plan.episodes) or used >= plan.action_budget:
+                    raise ValueError(f"ledger episode {eid} does not follow the progression set plan")
+                t = plan.episodes[k]
+                visits[t] += 1
+                s, planned = st.scope, min(50, plan.action_budget - used)
+                # U40: a finished attempt of a shorter plan (extended later) keeps the smaller budget it ran with
+                budget_ok = s.action_budget == planned or (st.outcome.value in TERMINAL and s.action_budget < planned)
+                if (s.episode_order, s.task_id, s.visit_index) != (n, t, visits[t]) or not budget_ok:
+                    raise ValueError(f"ledger episode {eid} does not follow the progression set plan")
+                rows.append(_episode_row(run_id, plan.set_id, cond, rep, n, t, visits[t], st, L.episode_events(eid)))
+                if st.outcome.value in TERMINAL:
+                    used += st.actions_used
+                    k += st.outcome.value == "success"
+                else:
+                    open_ = True
     return rows
 
 
@@ -257,7 +306,8 @@ def _episode_row(run_id: str, set_id: str, cond: str, rep: int, order: int, task
             "interruptions": sum(k == "interrupted" for k, _ in events), "resumes": sum(k == "resumed" for k, _ in events),
             "interruption_reasons": ";".join(sorted({_vocab(d, INFRA_REASONS) or "other" for k, d in events
                                                      if k == "interrupted"})) or None,
-            "memory_hash_start": get("memory_hash_start"), "memory_hash_end": get("memory_hash_end")}
+            "memory_hash_start": get("memory_hash_start"), "memory_hash_end": get("memory_hash_end"),
+            "action_budget": st.scope.action_budget if st is not None else None}
 
 
 def _gap(task: PublicTask, results: dict[str, float]) -> float:
@@ -308,7 +358,52 @@ def _rate(k: int, n: int) -> dict[str, Any]:
     return {"successes": k, "n": n, "rate": k / n if n else None}
 
 
-def _set_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _set_metrics(rows: list[dict[str, Any]], plan: SetPlan | None = None, key: tuple[str, int] = ("", 0)
+                 ) -> dict[str, Any]:
+    if plan is not None and plan.mode == "progression":
+        out = _fixed_metrics(rows, key) if rows else _empty_metrics(key, plan)
+        out["progression_set"] = prog = _progression_metrics(rows, plan)
+        if prog["set_end"] not in ("all_cleared", "budget_used"):
+            out["complete"] = False
+            if not out["incomplete_reasons"]:
+                out["incomplete_reasons"] = [f"set ended early ({prog['set_end']}): the next attempt has not run"]
+        return out
+    return _fixed_metrics(rows, key)
+
+
+def _empty_metrics(key: tuple[str, int], plan: SetPlan) -> dict[str, Any]:
+    return {"condition": key[0], "set_id": plan.set_id, "set_rep": key[1], "planned": 0, "terminal": 0,
+            "complete": False, "counts": {**{k: 0 for k in (*TERMINAL, "infra_incomplete", "running", "not_started")},
+                                          "finalization_failed": 0},
+            "success_at_50": _rate(0, 0), "actions_to_success": {"over": "successful episodes only", "n": 0,
+                                                                 "terminal_n": 0, "success_rate": None, "mean": None,
+                                                                 "median": None, "min": None, "max": None},
+            "first_visit": _rate(0, 0), "revisit": _rate(0, 0), "progression": [],
+            "incomplete_reasons": ["not started"]}
+
+
+def _progression_metrics(rows: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
+    term = [r for r in rows if r["outcome"] in TERMINAL and r["finalization"] == "done"]
+    total = sum(r["actions_used"] for r in term)
+    per_task, cleared = [], 0
+    for t in plan.episodes:
+        att = [r for r in term if r["task_id"] == t]
+        ok = next((i for i, r in enumerate(att) if r["success"]), None)
+        cleared += ok is not None
+        per_task.append({"task_id": t, "attempts": len(att), "cleared": ok is not None,
+                         "first_attempt_success": att[0]["success"] if att else None,
+                         "actions_used": sum(r["actions_used"] for r in att),
+                         "actions_to_clear": (sum(r["actions_used"] for r in att[:ok]) + att[ok]["actions_to_success"])
+                         if ok is not None else None})
+    pending = any(r["outcome"] not in TERMINAL or r["finalization"] != "done" for r in rows)
+    set_end = ("incomplete" if pending else "all_cleared" if cleared == len(plan.episodes)
+               else "budget_used" if total >= plan.action_budget else "incomplete")
+    return {"tasks_cleared": cleared, "tasks": len(plan.episodes), "total_actions": total,
+            "action_budget": plan.action_budget, "set_end": set_end, "attempts": len(term),
+            "truncated_attempts": sum(1 for r in term if (r.get("action_budget") or 50) < 50), "per_task": per_task}
+
+
+def _fixed_metrics(rows: list[dict[str, Any]], key: tuple[str, int] = ("", 0)) -> dict[str, Any]:
     term = [r for r in rows if r["outcome"] in TERMINAL]
     pending = [r for r in rows if r["outcome"] not in TERMINAL or r["finalization"] != "done"]
     succ = [r for r in term if r["success"]]
@@ -345,6 +440,13 @@ def _conditions(sets: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
     """Per condition over the analysis reps (complete in EVERY planned condition, the same reps _paired uses);
     progression by episode order (first visits vs revisits)."""
     by = {(s["condition"], s["set_rep"]): s for s in sets}
+    if plan.mode == "progression":
+        reps = range(1, plan.reps + 1)
+        return {c: {"complete_reps": [r for r in reps if by[(c, r)]["complete"]],
+                    "incomplete_reps": [r for r in reps if not by[(c, r)]["complete"]],
+                    "by_rep": [{"set_rep": r, **{k: by[(c, r)]["progression_set"][k] for k in (
+                        "tasks_cleared", "tasks", "total_actions", "action_budget", "set_end", "attempts",
+                        "truncated_attempts")}} for r in reps]} for c in plan.conditions}
     reps = range(1, plan.reps + 1)
     both = [r for r in reps if all(by[(c, r)]["complete"] for c in plan.conditions)]
     out = {}
@@ -361,7 +463,10 @@ def _conditions(sets: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
 
 
 def _paired(sets: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
-    """Plan T09 default: per set_rep product - baseline success@50, complete pairs only, paired bootstrap over reps."""
+    """Plan T09 default: per set_rep product - baseline success@50, complete pairs only, paired bootstrap over reps.
+    Progression plans (U27): tasks cleared, then total actions, per complete set pair; descriptive."""
+    if plan.mode == "progression":
+        return _paired_progression(sets, plan)
     base = {"unit": DEFINITIONS["paired_unit"], "difference": "product - baseline success@50"}
     if set(plan.conditions) != set(CONDITIONS):
         return {**base, "available": False, "reason": f"set plan runs {plan.conditions}, not both conditions"}
@@ -389,6 +494,32 @@ def _paired(sets: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
     return {**base, "available": True, "pairs": pairs, "n_pairs": len(pairs),
             "mean_difference": statistics.fmean(diffs) if diffs else None,
             "excluded": excluded, "n_excluded": len(excluded), "bootstrap": boot}
+
+
+def _paired_progression(sets: list[dict[str, Any]], plan: SetPlan) -> dict[str, Any]:
+    base = {"unit": DEFINITIONS["paired_unit"], "primary": DEFINITIONS["progression_primary"], "kind": "progression"}
+    if set(plan.conditions) != set(CONDITIONS):
+        return {**base, "available": False, "reason": f"set plan runs {plan.conditions}, not both conditions"}
+    by = {(s["condition"], s["set_rep"]): s for s in sets}
+    pairs, excluded = [], []
+    for rep in range(1, plan.reps + 1):
+        b, p = by[("baseline", rep)], by[("product", rep)]
+        bad = [f"{c} incomplete: {'; '.join(s['incomplete_reasons'])}" for c, s in (("baseline", b), ("product", p))
+               if not s["complete"]]
+        if bad:
+            excluded.append({"set_rep": rep, "reason": " | ".join(bad)})
+            continue
+        bp, pp = b["progression_set"], p["progression_set"]
+        kb, kp = (-bp["tasks_cleared"], bp["total_actions"]), (-pp["tasks_cleared"], pp["total_actions"])
+        pairs.append({"set_rep": rep,
+                      "baseline": {"tasks_cleared": bp["tasks_cleared"], "total_actions": bp["total_actions"]},
+                      "product": {"tasks_cleared": pp["tasks_cleared"], "total_actions": pp["total_actions"]},
+                      "better": "product" if kp < kb else "baseline" if kb < kp else "tie"})
+    tally = Counter(x["better"] for x in pairs)
+    return {**base, "available": True, "pairs": pairs, "n_pairs": len(pairs), "excluded": excluded,
+            "n_excluded": len(excluded), "tally": {k: tally.get(k, 0) for k in ("product", "baseline", "tie")},
+            "statement": "descriptive: fewer than 2 complete set pairs" if len(pairs) < 2 else
+                         "per-pair outcomes; no interval is computed for this ordinal primary metric"}
 
 
 def _banner(manifest: dict, plan: SetPlan, complete: bool) -> dict[str, Any]:
@@ -442,7 +573,7 @@ def _model_row(e: CostEvent, models: dict[str, Any]) -> tuple:
     ret = e.detail.get("model_returned") if isinstance(e.detail.get("model_returned"), str) else None
     accepted = {cfg["model"], *cfg.get("allowed_returned_models", [])} if cfg.get("model") else {e.model}
     check = ("mismatch" if any(m is not None and m not in accepted for m in (e.model, ret))
-             else "ok" if ret is not None else "unverified")
+             else "ok" if ret is not None and e.detail.get("model_verified", True) is not False else "unverified")
     return e.role, e.provider, cfg.get("model"), e.model, ret, check
 
 
@@ -595,6 +726,8 @@ def _markdown(rep: dict[str, Any]) -> str:
     for s in rep["sets"]:
         if s["incomplete_reasons"]:
             L.append(f"- {s['condition']} rep {s['set_rep']} INCOMPLETE: {'; '.join(s['incomplete_reasons'])}")
+    if pc.get("kind") == "progression":
+        return "\n".join(L + _markdown_progression(rep) + _markdown_tail(rep))
     L += ["", "## Paired comparison (product - baseline success@50)", "", f"Unit: {pc['unit']}.", ""]
     if not pc["available"]:
         L += [f"Not available: {pc['reason']}", ""]
@@ -616,7 +749,34 @@ def _markdown(rep: dict[str, Any]) -> str:
               ""]
         L += _table(["order", "task", "visit", "success"],
                     [[x["episode_order"], x["task_id"], x["visit"], _r(x)] for x in d["by_episode_order"]])
-    L += ["## Costs", "", f"Sources: {_cell(co['sources'])}. Sessions: {_cell(co['sessions'])}.", ""]
+    return "\n".join(L + _markdown_tail(rep))
+
+
+def _markdown_progression(rep: dict[str, Any]) -> list[str]:
+    pc = rep["paired_comparison"]
+    L = ["", "## Progression sets (U26) and primary comparison (U27)", "", f"Primary: {pc['primary']}.", ""]
+    L += _table(["condition", "rep", "complete", "set end", "tasks cleared", "total actions", "budget", "attempts",
+                 "truncated"],
+                [[s["condition"], s["set_rep"], s["complete"], s["progression_set"]["set_end"],
+                  f"{s['progression_set']['tasks_cleared']}/{s['progression_set']['tasks']}",
+                  s["progression_set"]["total_actions"], s["progression_set"]["action_budget"],
+                  s["progression_set"]["attempts"], s["progression_set"]["truncated_attempts"]] for s in rep["sets"]])
+    L += _table(["condition", "rep", "task", "attempts", "cleared", "first attempt", "actions used", "actions to clear"],
+                [[s["condition"], s["set_rep"], t["task_id"], t["attempts"], t["cleared"], t["first_attempt_success"],
+                  t["actions_used"], t["actions_to_clear"]] for s in rep["sets"] for t in s["progression_set"]["per_task"]])
+    if not pc["available"]:
+        return L + [f"Comparison not available: {pc['reason']}", ""]
+    L += _table(["set_rep", "baseline cleared", "baseline actions", "product cleared", "product actions", "better"],
+                [[x["set_rep"], x["baseline"]["tasks_cleared"], x["baseline"]["total_actions"],
+                  x["product"]["tasks_cleared"], x["product"]["total_actions"], x["better"]] for x in pc["pairs"]])
+    L += [f"- {pc['statement']}; tally {pc['tally']}; excluded set reps: {pc['n_excluded']}"]
+    L += [f"  - rep {x['set_rep']}: {x['reason']}" for x in pc["excluded"]]
+    return L + [""]
+
+
+def _markdown_tail(rep: dict[str, Any]) -> list[str]:
+    rp, co = rep["reproducibility"], rep["costs"]
+    L = ["## Costs", "", f"Sources: {_cell(co['sources'])}. Sessions: {_cell(co['sessions'])}.", ""]
     L += _table(["phase", "events", "retries", "budget actions", "latency s", *TOKENS],
                 [[ph, d["events"], d["retries"], d["budget_actions"], d["latency_s"], *(_tok(d[t]) for t in TOKENS)]
                  for ph, d in co["by_phase"].items()])
@@ -633,4 +793,4 @@ def _markdown(rep: dict[str, Any]) -> str:
     L += [f"- set_plan: `{_cell(rp.get('set_plan'))}`", "", "## Definitions", ""]
     L += [f"- **{k}**: {v}" for k, v in rep["definitions"].items()]
     L += ["", "Per-episode and per-action tables: episodes.csv, actions.csv; cost groups: costs.csv.", ""]
-    return "\n".join(L)
+    return L

@@ -161,17 +161,19 @@ def validate_task(task: PublicTask, make_adapter: Callable[[], SimulatorAdapter]
                  "max": {m: max(r[m] for r in first) for m in metric_names}} if finite and first else {})
     # ponytail: only ratio identities (metric = numerator / denominator); add forms when a task needs one.
     idents = ev.get("identities", [])
+    hidden = private.hidden_success_thresholds    # U44: evaluator-held numbers of the task's hidden criteria
 
     def run(x: dict[str, Any]) -> dict[str, Any]:
         v = validate_parameters(task, x)
         if not isinstance(v, ValidParameters):
             return {"parameters": x, "valid": False, "reason": v.reason}
         results = adapter.evaluate(v.parameters).results
-        out = {"parameters": v.parameters, "valid": True, "results": results, "success": task.is_success(results)}
+        out = {"parameters": v.parameters, "valid": True, "results": results,
+               "success": task.is_success(results, hidden)}
         if idents:   # success judged with each identity recomputed from the model's own outputs/inputs
             vals = {**v.parameters, **results}
             out["identity_consistent_success"] = task.is_success(
-                {**results, **{i["metric"]: vals[i["numerator"]] / vals[i["denominator"]] for i in idents}})
+                {**results, **{i["metric"]: vals[i["numerator"]] / vals[i["denominator"]] for i in idents}}, hidden)
         return out
 
     known = [run(x) for x in private.known_success_inputs]
@@ -187,7 +189,7 @@ def validate_task(task: PublicTask, make_adapter: Callable[[], SimulatorAdapter]
                             "basis": ev.get("data", {}).get("basis", ""),
                             "per_metric": {m: _errors([(e["results"][m], e["observed"][m]) for e in used])
                                            for m in metric_names}}
-        near_rows = [e for e in used if task.is_success(e["observed"])]
+        near_rows = [e for e in used if task.is_success(e["observed"], hidden)]
         near_target = {"definition": "data rows whose OBSERVED values meet the public success rule",
                        "per_metric": ({m: _errors([(e["results"][m], e["observed"][m]) for e in near_rows])
                                        for m in metric_names} if near_rows else None)}
@@ -236,6 +238,9 @@ def validate_task(task: PublicTask, make_adapter: Callable[[], SimulatorAdapter]
         reasons.append(f"{broken} of {len(known)} known success inputs succeed only where the model breaks a declared "
                        "identity (" + "; ".join(f"{i['metric']} = {i['numerator']} / {i['denominator']}" for i in idents)
                        + "): success would exploit model error")
+    missing = {h.metric for h in task.hidden_success} - {c.metric for c in hidden}
+    if missing:
+        reasons.append(f"hidden criteria without an evaluator threshold: {sorted(missing)}")
     reasons += [f"open question: {q}" for q in ev.get("open_questions", [])]
 
     return TaskValidationReport(
@@ -251,6 +256,7 @@ def validate_task(task: PublicTask, make_adapter: Callable[[], SimulatorAdapter]
                 "constraints": [c.model_dump(mode="json") for c in task.constraints]},
         metrics=[{**m.model_dump(mode="json"), "transform": transforms.get(m.name, "unrecorded")} for m in task.metrics],
         success_rule={"criteria": [c.model_dump(mode="json") for c in task.success], "all_required": True,
+                      "hidden_criteria": [h.model_dump(mode="json") for h in task.hidden_success],   # rules only
                       "paper_goal_mapping": ev.get("success_rule_mapping", ""), "identities": idents},
         determinism=determinism, range_check=range_check, validation_error=validation_error,
         near_target_residual=near_target,
@@ -275,13 +281,16 @@ def write_report(report: TaskValidationReport, root: str | Path) -> tuple[Path, 
 
 
 def load_data(spec: dict[str, Any], task: PublicTask, root: Path) -> list[Row]:
-    """CSV named by validity_evidence.data: {csv, header_rows, columns: {param: col}, metrics: {metric: col}}."""
+    """CSV named by validity_evidence.data: {csv, header_rows, columns: {param: col}, metrics: {metric: col},
+    values?: {param: {raw value: public value}}} (values maps upstream category codes to the task's public names)."""
     cat = {p.name for p in task.parameters if isinstance(p, CategoricalParam)}
+    vmap = spec.get("values", {})
     with open(root / spec["csv"], encoding="utf-8", newline="") as f:
         rows = list(csv.reader(f))
     head, body = rows[0], rows[spec.get("header_rows", 1):]
     col = {name: head.index(c) for name, c in {**spec["columns"], **spec["metrics"]}.items()}
-    return [{"parameters": {k: r[col[k]] if k in cat else float(r[col[k]]) for k in spec["columns"]},
+    return [{"parameters": {k: vmap.get(k, {}).get(r[col[k]], r[col[k]]) if k in cat else float(r[col[k]])
+                            for k in spec["columns"]},
              "observed": {m: float(r[col[m]]) for m in spec["metrics"]}} for r in body if r]
 
 

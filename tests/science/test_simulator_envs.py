@@ -10,7 +10,8 @@ import yaml
 from labgene.config import SimulatorConfig
 from labgene.contracts import PublicTask
 from labgene.simulators.factory import build_simulator
-from labgene.simulators.task_validation import SIMULATORS_FILE, load_private, registrable_for_evaluation, validate_task
+from labgene.simulators.task_validation import (SIMULATORS_FILE, load_data, load_private, registrable_for_evaluation,
+                                               validate_task)
 from labgene.simulators.validation import validate_parameters
 
 pytestmark = pytest.mark.science
@@ -60,8 +61,10 @@ def test_aldenv_connection_check_report_is_development_only():
     assert r.status == "unvalidated" and r.development_only and not registrable_for_evaluation(r, task)
 
 
-def test_summit_task_ranges_match_upstream_domain():
-    task, _ = setup("summit_reizman_case1", "summit")
+@pytest.mark.parametrize("case", [1, 2, 3, 4])
+def test_summit_task_ranges_and_public_catalyst_names_match_upstream_domain(case):
+    from labgene.simulators.worker import SUMMIT_CATALYSTS
+    task, _ = setup(f"suzuki_flow_{case:02d}", "summit")
     code = ("import sys, json; sys.path.insert(0, '.envs/src/summit')\n"
             "from summit.benchmarks import ReizmanSuzukiEmulator as E\n"
             "d = E.setup_domain(); print(json.dumps({v.name: (list(v.levels) if hasattr(v, 'levels') else"
@@ -71,19 +74,24 @@ def test_summit_task_ranges_match_upstream_domain():
     assert out.returncode == 0, out.stderr[-2000:]
     up = json.loads(out.stdout.strip().splitlines()[-1])
     p = {x.name: x for x in task.parameters}
-    assert p["catalyst"].choices == up["catalyst"] and len(up["catalyst"]) == 8
+    # U23: public names only, mapped one-to-one onto the emulator's eight codes inside the worker
+    assert sorted(SUMMIT_CATALYSTS[c] for c in p["catalyst"].choices) == sorted(up["catalyst"]) and len(up["catalyst"]) == 8
+    assert not any(c.startswith(("P1-", "P2-")) for c in p["catalyst"].choices)
     for mine, theirs in [("residence_time", "t_res"), ("temperature", "temperature"), ("catalyst_loading", "catalyst_loading")]:
         assert [p[mine].min, p[mine].max] == up[theirs]
 
 
-def test_summit_candidate_deterministic_paper_optimum_and_never_validated():
-    task, make = setup("summit_reizman_case1", "summit")
-    private = private_or_skip("summit_reizman_case1")
-    # The paper-optimum conditions and the model's pinned outputs there are evaluator-held (git-ignored).
+@pytest.mark.parametrize("case", [1, 2, 3, 4])
+def test_summit_tasks_deterministic_pinned_and_registrable(case):
+    tid = f"suzuki_flow_{case:02d}"
+    task, make = setup(tid, "summit")
+    private = private_or_skip(tid)
+    # the paper-optimum conditions and the model's pinned outputs there are evaluator-held (git-ignored)
     ref = private.validity_evidence["reference_points"][0]
     a, b = evaluate_fresh(make, validate_parameters(task, ref["parameters"]).parameters)
     assert a.results == b.results == pytest.approx(ref["model_output_pinned"], abs=1e-3)
-    r = validate_task(task, make, private, repeats=2)
+    assert a.results["ton"] == pytest.approx(a.results["yield"] / ref["parameters"]["catalyst_loading"])   # U13
+    r = validate_task(task, make, private, repeats=2, data=load_data(private.validity_evidence["data"], task, ROOT))
     assert r.determinism["identical"] and r.range_check["all_metrics_finite"]
-    assert r.known_success_summary["succeeded"] == r.known_success_summary["checked"] >= 1
-    assert r.status == "unvalidated" and r.open_questions and not registrable_for_evaluation(r, task)
+    assert r.known_success_summary["succeeded"] == r.known_success_summary["checked"] >= 20
+    assert r.status == "validated" and not r.open_questions and registrable_for_evaluation(r, task)

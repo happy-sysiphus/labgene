@@ -1,0 +1,13 @@
+# U45 main evaluation v3 (2026-09-29): the v2 tasks and knowledge with one rule change: every experiment follows
+# exactly one consultation written by the researcher (actions alternate consult, run_experiment); both count as
+# actions. set_id stays main_v2 (the same evaluation set), so the frozen v2 knowledge states import unchanged.
+# Progression c1 -> c4, a task retried until cleared, 300 actions per condition, both conditions in parallel,
+# one set rep (U26/U27 rules unchanged).
+set_id: main_v2
+reps: 1
+conditions: [baseline, product]
+mode: progression
+episodes: [suzuki_ton_01, suzuki_ton_02, suzuki_ton_03, suzuki_ton_04]
+action_budget: 300
+parallel_conditions: true
+consult_before_experiment: true

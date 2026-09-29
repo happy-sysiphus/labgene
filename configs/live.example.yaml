@@ -3,18 +3,24 @@
 profile_id: live-dev
 execution_mode: live_development
 roles:
-  researcher:       {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
-  advisor_baseline: {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
-  advisor_product:  {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
-  # Internal processing: provider not restricted (spec §10.1). Candidates, unvalidated:
-  internal_summarizer: {provider: openai, model: gpt-6-astra, endpoint: responses, reasoning_effort: high, max_output_tokens: 4096}
-  kg_extractor:        {provider: openai, model: gpt-6-astra, endpoint: responses, reasoning_effort: high, max_output_tokens: 4096}
-  leakage_gate:        {provider: anthropic, model: claude-fable-5-1, endpoint: messages, reasoning_effort: high, max_output_tokens: 2048}
+  # researcher + both advisors: ONE shared approved config (preflight: config.APPROVED_AGENT_CONFIGS).
+  # U10 (2026-09-28): Codex CLI on the ChatGPT subscription; the spec §10.1 Gemini config is also accepted:
+  #   {provider: gemini, model: gemini-3.1-pro-preview, endpoint: interactions, thinking_level: high, max_output_tokens: 8192}
+  researcher:          {provider: codex, model: gpt-6-luna, endpoint: codex_exec, reasoning_effort: max, max_output_tokens: 65536}
+  advisor_baseline:    {provider: codex, model: gpt-6-luna, endpoint: codex_exec, reasoning_effort: max, max_output_tokens: 65536}
+  advisor_product:     {provider: codex, model: gpt-6-luna, endpoint: codex_exec, reasoning_effort: max, max_output_tokens: 65536}
+  # internal roles (U11): Claude Code headless on the Claude Max subscription
+  internal_summarizer: {provider: claude_code, model: claude-opus-5-5, endpoint: claude_cli, reasoning_effort: max, max_output_tokens: 32768}
+  kg_extractor:        {provider: claude_code, model: claude-opus-5-5, endpoint: claude_cli, reasoning_effort: medium, max_output_tokens: 32768}   # U38
+  # leakage gate on Codex (U8), effort at most medium (U9)
+  leakage_gate:        {provider: codex, model: gpt-6-astra, endpoint: codex_exec, reasoning_effort: low}
   embedder:            {provider: gemini, model: gemini-embedding-2, endpoint: embed_content, dimensions: 3072}
 limits:
   development_only: true      # finite dev values; freeze before evaluation (spec §12)
   provider_max_attempts: 3
-  provider_timeout_s: 180
+  provider_timeout_s: 900     # effort max may think for minutes
+  researcher_max_analysis_calls: 1
+  advisor_max_tool_calls: 2
 cost_caps:
   max_calls: null             # REQUIRED: approved finite values
   max_input_tokens: null
@@ -22,15 +28,19 @@ cost_caps:
   max_usd: null
   max_wall_s: null
   prices: {}                  # model -> {input_usd_per_mtok, output_usd_per_mtok}; fill from the provider's price page
+                              # (subscription CLIs codex / claude_code: 0, they are not billed per token)
 search:
-  provider: google_cse
+  provider: none              # U12: no external web search for now (google_cse needs keys + cost_caps.max_search_calls)
   max_results: 5
 knowledge:
-  corpus_dir: data/corpus
-  baseline_initial_text: data/corpus/general_background.md
-  ontology_profile: configs/ontology/profile.yaml
-simulators:
-  aldenv.fastfast: {backend: worker, python: .envs/aldenv/Scripts/python.exe, worker_module: labgene.simulators.worker, worker_args: [--backend, aldenv, --system, FastFast]}
+  corpus_dir: data/corpus                              # the approved corpus (U19, U32; git-ignored)
+  baseline_initial_text: data/baseline_initial_text.md # U20: the same sources within 60k characters
+  ontology_profile: configs/ontology/suzuki_flow.yaml
+simulators:                                            # Reizman Suzuki cases 1-4 (U21), Summit worker env
+  sim.suzuki_c1: {backend: worker, python: .envs/summit/Scripts/python.exe, worker_args: [--backend, summit, --source, .envs/src/summit, --case, "1"], timeout_s: 120}
+  sim.suzuki_c2: {backend: worker, python: .envs/summit/Scripts/python.exe, worker_args: [--backend, summit, --source, .envs/src/summit, --case, "2"], timeout_s: 120}
+  sim.suzuki_c3: {backend: worker, python: .envs/summit/Scripts/python.exe, worker_args: [--backend, summit, --source, .envs/src/summit, --case, "3"], timeout_s: 120}
+  sim.suzuki_c4: {backend: worker, python: .envs/summit/Scripts/python.exe, worker_args: [--backend, summit, --source, .envs/src/summit, --case, "4"], timeout_s: 120}
 paths:
   tasks_dir: configs/tasks
   private_dir: private

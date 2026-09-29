@@ -203,6 +203,9 @@ class LLMKGExtractor:
             input=[{"role": "user", "text": canonical_json({
                 "terms": [t["label"] for t in ontology.terms.values()], "passage": text})}])
         res = guarded_generate(self.provider, req, ctx, self.allowed_models)
+        if res.status == ProviderStatus.refusal:   # U17: this chunk gets no relations (its text stays retrievable)
+            ctx.emit(kind="other", role="kg_extractor", status="refusal", detail={"error": res.error})
+            return []
         if res.status != ProviderStatus.ok:
             raise KnowledgeInfraError("kg_extractor call failed")
         try:

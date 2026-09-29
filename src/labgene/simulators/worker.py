@@ -93,8 +93,17 @@ def _aldenv(a: argparse.Namespace) -> Backend:
     return descriptor, {"gpc": "angstrom/cycle"}, evaluate
 
 
+# U23: public catalyst names (commercial Buchwald precatalyst names, no paper codes) -> the emulator's codes.
+# Paper Scheme 1: P1 = 2-aminobiphenyl palladacycle mesylate (G3), P2 = the chloride (G2); L1 XPhos, L2 SPhos,
+# L3 RuPhos, L4 Xantphos, L5 PCy3, L6 PPh3, L7 PtBu3.
+SUMMIT_CATALYSTS = {"XPhos Pd G3": "P1-L1", "XPhos Pd G2": "P2-L1", "SPhos Pd G3": "P1-L2", "RuPhos Pd G3": "P1-L3",
+                    "Xantphos Pd G3": "P1-L4", "PCy3 Pd G3": "P1-L5", "PPh3 Pd G3": "P1-L6", "PtBu3 Pd G3": "P1-L7"}
+
+
 def _summit(a: argparse.Namespace) -> Backend:
-    """Summit ReizmanSuzukiEmulator (pretrained 5-ANN ensemble mean, MIT). Upstream code unmodified."""
+    """Summit ReizmanSuzukiEmulator (pretrained 5-ANN ensemble mean, MIT). Upstream code unmodified.
+    TON follows its published definition, yield(%) / catalyst_loading(mol%), from the emulator's clipped yield
+    (user decision U13): the ANN's own TON output breaks that identity (grid mean |error| 2.06, max 37.3)."""
     src = Path(a.source).resolve()
     sys.path.insert(0, str(src))
     import pandas as pd
@@ -104,15 +113,17 @@ def _summit(a: argparse.Namespace) -> Backend:
     name = f"reizman_suzuki_case_{a.case}"
     descriptor = (f"summit@{git_head(src)};src_sha256={files_sha256(src / 'summit')};env_sha256={env_sha256()};"
                   f"model={name};model_files_sha256={files_sha256(src / 'summit' / 'benchmarks' / 'models' / name)};"
-                  "clip=True;ensemble=mean")
+                  "clip=True;ensemble=mean;ton=derived:yield/catalyst_loading;catalysts=public-names-v1")
     emu = ee.get_pretrained_reizman_suzuki_emulator(case=a.case)
 
     def evaluate(p: dict[str, Any]) -> dict[str, float]:
-        cond = DataSet.from_df(pd.DataFrame({"catalyst": [p["catalyst"]], "t_res": [float(p["residence_time"])],
+        cond = DataSet.from_df(pd.DataFrame({"catalyst": [SUMMIT_CATALYSTS[p["catalyst"]]],
+                                             "t_res": [float(p["residence_time"])],
                                              "temperature": [float(p["temperature"])],
                                              "catalyst_loading": [float(p["catalyst_loading"])]}))
         r = emu.run_experiments(cond)
-        return {"yield": float(r[("yld", "DATA")].iloc[0]), "ton": float(r[("ton", "DATA")].iloc[0])}
+        y = float(r[("yld", "DATA")].iloc[0])
+        return {"yield": y, "ton": y / float(p["catalyst_loading"])}
     return descriptor, {"yield": "%", "ton": "1"}, evaluate
 
 

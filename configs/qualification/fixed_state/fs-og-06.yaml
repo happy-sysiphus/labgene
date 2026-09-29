@@ -1,8 +1,8 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-og-06
-status: draft_unreviewed
+status: reviewed
 domain: observation_grounding
 task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
 history:
@@ -15,7 +15,9 @@ history:
   question: Is there any record of this target being reached?
   advice: accurate
   response: {answer: A previous run of this kind of crystallization reported a purity of 97 % near pH 8.35. That was
-      a different run; only a real experiment in this episode can confirm it.}
+      a different run; only a real experiment in this episode can confirm it., reasoning: That report used a
+      comparable crystallization., limitations: The earlier run was a different experiment; its value is not an
+      observation of this episode.}
 remaining_actions: 48
 expect:
   actions: [run_experiment]

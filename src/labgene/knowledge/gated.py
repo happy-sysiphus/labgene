@@ -16,6 +16,11 @@ from .gate import KnowledgeInfraError, identity_blocked, norm_url, study_key
 from .store import KnowledgeStore, exposure, unavailable
 
 
+def hit_titles(hit: RawHit) -> list[str]:
+    """Every title a search/fetch hit reports: the identity check matches any of them."""
+    return [hit.title, hit.metadata.get("title", ""), hit.metadata.get("citation_title", "")]
+
+
 class GatedSearch:
     """For ONE MemoryScope/state dir. A source that was blocked or invalidated stays unavailable in this state."""
 
@@ -25,7 +30,7 @@ class GatedSearch:
         self.max_results, self.max_chars = max_results, max_chars
 
     def _titles(self, hit: RawHit) -> list[str]:
-        return [hit.title, hit.metadata.get("title", ""), hit.metadata.get("citation_title", "")]
+        return hit_titles(hit)
 
     def search(self, query: str, ctx: CallContext) -> list[SourceView]:
         qkey = f"cache:search:{sha256_text(canonical_json([self.provider.name, self.max_results, query]))[:16]}"

@@ -364,3 +364,40 @@ def test_fixture_policy_respects_categorical_params_and_linear_constraints():
     assert all(h.kind in ("consult", "observation") for h in hist)
     used = {h.payload["parameters"]["catalyst"] for h in hist if h.kind == "observation"}
     assert len(used) > 1                                                        # categorical moves happen
+
+
+# ---------------------------------------------------------------- U10: researcher on the Codex CLI (I27)
+
+def test_u10_researcher_decides_through_codex_with_a_resent_tool_round(codex_script):
+    from conftest import codex_config
+    from labgene.harness.parsing import parse_action
+    from labgene.providers.codex_cli import NO_TOOLS, CodexExecProvider
+    u10 = RoleModel(provider="codex", model="gpt-6-luna", endpoint="codex_exec", reasoning_effort="max",
+                    max_output_tokens=65536)
+    run, calls = codex_script(
+        json.dumps({"text": "", "tool_calls": [{"name": "describe", "arguments_json": "{}"}]}),   # planner: tool round
+        "PLAN: try temperature 80, time 30",                                                      # planner: tools used up
+        json.dumps({"text": "REVIEW: in range, not a repeat", "tool_calls": []}),                 # reviewer: no tool
+        json.dumps({"action": "run_experiment", "note": None, "args": {                           # finalizer: strict JSON
+            "question": None, "hypothesis": "ridge", "parameters": {"temperature": 80.0, "time": 30.0}}}))
+    events = []
+    d = PlannerReviewerResearcher(CodexExecProvider(runner=run), u10,
+                                  Limits(researcher_max_analysis_calls=1, provider_backoff_s=0.0),
+                                  sleep=lambda s: None).decide(view(RIDGE, RIDGE_OBS), ctx(events))
+    assert d.status == "ok" and len(d.analysis) == 1
+    assert parse_action(d.raw_action_text)[1] == {"hypothesis": "ridge", "parameters": {"temperature": 80.0, "time": 30.0}}
+    planner, planner_again, reviewer, finalizer = calls
+    assert planner["schema"]["properties"]["tool_calls"]["items"]["properties"]["name"]["enum"] == \
+        ["describe", "fit", "predict", "nearest"]
+    assert json.loads(planner["stdin"])["researcher_view"]["remaining_actions"] == 48
+    turns = json.loads(planner_again["stdin"])["conversation"]                  # stateless: the phase is resent
+    assert [t["role"] for t in turns] == ["user", "model", "tool"] and turns[2]["call_id"] == "call_1"
+    assert turns[1]["function_calls"][0]["name"] == "describe" and turns[2]["result"]["kind"] == "descriptive_statistic"
+    assert planner_again["schema"] is None and planner_again["instructions"].endswith(NO_TOOLS)
+    assert json.loads(reviewer["stdin"])["planner_proposal"] == "PLAN: try temperature 80, time 30"
+    assert finalizer["instructions"] == FINALIZER_SYSTEM and finalizer["schema"]["additionalProperties"] is False
+    assert all(c["cwd_empty"] and codex_config(c["args"], "model_reasoning_effort") == '"max"' for c in calls)
+    llm = [e for e in events if e.kind == "llm_call"]
+    assert len(llm) == 4 and {(e.provider, e.model, e.detail["billing"], e.detail["model_verified"],
+                               e.detail["interaction_id"]) for e in llm} == {("codex", "gpt-6-luna", "subscription",
+                                                                              False, None)}

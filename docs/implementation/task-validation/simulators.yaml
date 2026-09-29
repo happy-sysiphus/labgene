@@ -13,3 +13,18 @@ sim.suzuki_c1:
   python: .envs/summit/Scripts/python.exe
   worker_args: [--backend, summit, --source, .envs/src/summit, --case, "1"]
   timeout_s: 120
+sim.suzuki_c2:
+  backend: worker
+  python: .envs/summit/Scripts/python.exe
+  worker_args: [--backend, summit, --source, .envs/src/summit, --case, "2"]
+  timeout_s: 120
+sim.suzuki_c3:
+  backend: worker
+  python: .envs/summit/Scripts/python.exe
+  worker_args: [--backend, summit, --source, .envs/src/summit, --case, "3"]
+  timeout_s: 120
+sim.suzuki_c4:
+  backend: worker
+  python: .envs/summit/Scripts/python.exe
+  worker_args: [--backend, summit, --source, .envs/src/summit, --case, "4"]
+  timeout_s: 120

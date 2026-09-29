@@ -345,9 +345,18 @@ def test_factory_builds_configured_adapters_and_rejects_mismatched_endpoints():
     assert isinstance(build_llm(offline.roles.researcher), FixtureProvider)
     assert build_embedder(offline.roles.embedder).development_only is True
     live = load_profile(ROOT / "configs/live.example.yaml")
-    assert isinstance(build_llm(live.roles.researcher), GeminiInteractionsProvider)
-    assert isinstance(build_llm(live.roles.kg_extractor), OpenAIResponsesProvider)
-    assert isinstance(build_llm(live.roles.leakage_gate), AnthropicMessagesProvider)
+    from labgene.providers.claude_cli import ClaudeCodeProvider
+    from labgene.providers.codex_cli import CodexExecProvider
+    assert isinstance(build_llm(live.roles.researcher), CodexExecProvider)            # U10: researcher + advisors
+    assert isinstance(build_llm(live.roles.advisor_product), CodexExecProvider)
+    assert isinstance(build_llm(live.roles.leakage_gate), CodexExecProvider)          # U8: gate on Codex
+    assert isinstance(build_llm(live.roles.kg_extractor), ClaudeCodeProvider)         # U11: internal roles
+    assert isinstance(build_llm(RoleModel(provider="gemini", model=MODEL, endpoint="interactions")),
+                      GeminiInteractionsProvider)
+    assert isinstance(build_llm(RoleModel(provider="openai", model="gpt-6-astra", endpoint="responses")),
+                      OpenAIResponsesProvider)
+    assert isinstance(build_llm(RoleModel(provider="anthropic", model="claude-fable-5-1", endpoint="messages")),
+                      AnthropicMessagesProvider)
     assert build_embedder(live.roles.embedder).dimensions == 3072
     with pytest.raises(ValueError):
         build_llm(RoleModel(provider="gemini", model=MODEL, endpoint="responses"))

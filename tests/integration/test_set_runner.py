@@ -1,14 +1,15 @@
 """Set execution: two conditions, revisits, stop/resume rules. Offline fixtures: contract checks only."""
 import pytest
 
-from labgene.config import CostCaps, load_set_plan
+from labgene.config import CostCaps, SetPlan, load_set_plan
 from labgene.contracts import AdvisorOutcome, AdvisorResponse, FinalizationStatus, Outcome
 from labgene.costs import CostGuard
 from labgene.harness.ledger import Ledger
 from labgene.harness.runner import ConditionComponents, SetRunner, SetRunStatus
 from labgene.memory.base import finalize_event_id
 from labgene.providers.base import ModelChangedError
-from test_episode import CATALYST, LIMITS, POLICY, RIDGE, ROOT, CountingSim, FakeAdvisor, FakeMemory, FakeResearcher
+from test_episode import (CATALYST, HITS, LIMITS, MISS, POLICY, RIDGE, ROOT, CountingSim, FakeAdvisor, FakeMemory,
+                          FakeResearcher, ask)
 
 PLAN = load_set_plan(ROOT / "configs/set_plans/smoke.yaml")   # reps 2, both conditions, ridge/catalyst/ridge
 
@@ -31,9 +32,11 @@ class CitingAdvisor(FakeAdvisor):
 class World:
     """Factory double: one FakeMemory per (condition, set, rep); fresh=True restores it to the empty initial state."""
 
-    def __init__(self, memory_fail=0, advisor_outcomes=None, memory_error=None, cite=False):
+    def __init__(self, memory_fail=0, advisor_outcomes=None, memory_error=None, cite=False, policy=None):
         self.memory_fail, self.advisor_outcomes = memory_fail, advisor_outcomes if advisor_outcomes is not None else []
         self.memory_error, self.cite = memory_error, cite
+        self.policy = policy or (lambda: POLICY)    # factory: one scripted policy per condition/set, kept on resume
+        self.policies = {}
         self.memories, self.fresh_calls, self.researchers = {}, [], {}
 
     def __call__(self, ms, fresh):
@@ -41,7 +44,8 @@ class World:
         if fresh:
             self.memories[ms.key] = FakeMemory(ms, fail=self.memory_fail, error=self.memory_error)
             self.memory_fail = 0
-        mem, res = self.memories[ms.key], FakeResearcher(POLICY)
+        pol = self.policies.setdefault(ms.key, self.policy())
+        mem, res = self.memories[ms.key], FakeResearcher(pol)
         self.researchers.setdefault(ms.key, []).append(res)
         advisor = CitingAdvisor(ms.condition, mem) if self.cite else \
             FakeAdvisor(ms.condition, "Same answer.", self.advisor_outcomes)
@@ -155,3 +159,173 @@ def test_i7_advisor_citing_past_episode_ids_does_not_reveal_condition(tmp_path):
         assert views["baseline"] == views["product"]
         assert "obs:e002:a003" in views["baseline"]                 # the citation still reaches the researcher
         assert "baseline" not in views["baseline"] and "product" not in views["product"]
+
+
+
+# ---------------------------------------------------------------- U26: progression sets under a set-wide budget
+
+def prog(budget, tasks=("fixture_ridge", "fixture_catalyst")):
+    return SetPlan(set_id="smoke", reps=1, episodes=list(tasks), mode="progression", action_budget=budget)
+
+
+def episodes(L, cond="baseline"):
+    rows = L.db.execute("SELECT episode_id FROM episodes WHERE condition=? ORDER BY episode_order", (cond,))
+    return [L.state(r["episode_id"]) for r in rows]
+
+
+def failing_first(n_fail):
+    """Misses every experiment on the first n_fail attempts at fixture_ridge, then solves every task (ask, miss, hit).
+    Attempts are counted from the attempt's first decision."""
+    seen = {"ridge": 0}
+
+    def policy(v):
+        if v.task.task_id == "fixture_ridge" and v.actions_used == 0:
+            seen["ridge"] += 1
+        if v.task.task_id == "fixture_ridge" and seen["ridge"] <= n_fail:
+            return MISS
+        return [ask(), MISS, HITS[v.task.task_id]][v.actions_used]
+    return policy
+
+
+def test_u26_progression_moves_on_after_a_success_and_retries_a_failed_task(tmp_path):
+    L, w = Ledger(tmp_path), World(policy=lambda: failing_first(1))
+    assert SetRunner(L, "run", prog(300), w, LIMITS).run() == SetRunStatus("complete")
+    for c in ("baseline", "product"):
+        eps = episodes(L, c)
+        assert [(e.scope.task_id, e.scope.visit_index, e.scope.action_budget, e.outcome) for e in eps] == [
+            ("fixture_ridge", 1, 50, Outcome.budget_exhausted),     # failed attempt: same task again
+            ("fixture_ridge", 2, 50, Outcome.success),              # cleared -> next task
+            ("fixture_catalyst", 1, 50, Outcome.success)]           # all cleared -> the set ends
+        assert sum(e.actions_used for e in eps) == 56 and all(e.finalization is FinalizationStatus.done for e in eps)
+        # the retry's advisor sees the failed attempt's records (memory kept inside the set)
+        assert eps[1].memory_hash_start == eps[0].memory_hash_end
+
+
+def test_u26_the_set_budget_truncates_the_last_attempt_and_ends_the_set(tmp_path):
+    L, w = Ledger(tmp_path), World(policy=lambda: failing_first(2))
+    assert SetRunner(L, "run", prog(60, ("fixture_ridge", "fixture_catalyst")), w, LIMITS).run() ==         SetRunStatus("complete")
+    eps = episodes(L)
+    assert [(e.scope.visit_index, e.scope.action_budget, e.actions_used, e.outcome) for e in eps] == [
+        (1, 50, 50, Outcome.budget_exhausted), (2, 10, 10, Outcome.budget_exhausted)]   # 60 used: stop
+    # the truncated attempt's researcher saw its own, smaller budget
+    views = [v for r in w.researchers["run/baseline/smoke/rep1"] for v in r.views]
+    assert views[50].remaining_actions == 10 and views[-1].remaining_actions == 1
+
+
+def test_u26_a_truncated_attempt_can_still_clear_its_task(tmp_path):
+    L, w = Ledger(tmp_path), World(policy=lambda: failing_first(1))
+    assert SetRunner(L, "run", prog(56), w, LIMITS).run() == SetRunStatus("complete")
+    assert [(e.scope.task_id, e.scope.action_budget, e.outcome) for e in episodes(L)] == [
+        ("fixture_ridge", 50, Outcome.budget_exhausted), ("fixture_ridge", 6, Outcome.success),
+        ("fixture_catalyst", 3, Outcome.success)]                  # 50 + 3 used -> 3 left, enough to clear it
+
+
+def test_u26_protocol_error_termination_is_a_failed_attempt(tmp_path):
+    seen = {"n": 0}
+
+    def policy(v):
+        if v.actions_used == 0 and not v.history:
+            seen["n"] += 1
+        return "not an action" if seen["n"] == 1 else [ask(), MISS, HITS[v.task.task_id]][v.actions_used]
+    L, w = Ledger(tmp_path), World(policy=lambda: policy)
+    assert SetRunner(L, "run", prog(300, ("fixture_ridge",)), w, LIMITS).run() == SetRunStatus("complete")
+    assert [(e.scope.visit_index, e.outcome, e.actions_used) for e in episodes(L)] == [
+        (1, Outcome.protocol_error, 0), (2, Outcome.success, 3)]
+
+
+def test_u26_interrupted_progression_resumes_with_the_same_scopes(tmp_path):
+    outs = [AdvisorOutcome(status="ok", response=AdvisorResponse(answer="a"))] * 2 +         [AdvisorOutcome(status="infra_error", error="503")] * 3        # fails at the first consult of episode 2
+    L, w = Ledger(tmp_path), World(advisor_outcomes=list(outs), policy=lambda: failing_first(1))
+    first = SetRunner(L, "run", prog(300), w, LIMITS).run()
+    assert first.status == "infra_incomplete"
+    stopped = first.episode_id
+    assert SetRunner(L, "run", prog(300), w, LIMITS).run() == SetRunStatus("complete")
+    assert L.state(stopped).outcome in (Outcome.success, Outcome.budget_exhausted)
+    b = episodes(L, "baseline")
+    assert [(e.scope.task_id, e.scope.visit_index, e.scope.action_budget) for e in b] == [
+        ("fixture_ridge", 1, 50), ("fixture_ridge", 2, 50), ("fixture_catalyst", 1, 50)]
+
+
+def test_u26_u40_a_smaller_budget_cannot_resume_a_set_but_a_larger_one_continues_it(tmp_path):
+    L, w = Ledger(tmp_path), World(policy=lambda: failing_first(1))
+    SetRunner(L, "run", prog(56), w, LIMITS).run()          # e002 was a truncated 6-action attempt
+    with pytest.raises(ValueError, match="does not match the set plan"):
+        SetRunner(L, "run", prog(55), w, LIMITS).run()       # would recompute e002 with a 5-action budget
+    # U40: an extension (larger budget) keeps the finished truncated attempt as it ran and continues the set
+    assert SetRunner(L, "run", prog(70), w, LIMITS).run() == SetRunStatus("complete")
+    eps = episodes(L)
+    assert eps[1].scope.action_budget == 6 and len(eps) > 2
+
+
+def test_u26_progression_plans_are_validated():
+    with pytest.raises(ValueError):
+        SetPlan(set_id="s", episodes=["a", "a"], mode="progression", action_budget=300)
+    with pytest.raises(ValueError):
+        SetPlan(set_id="s", episodes=["a"], mode="progression")
+    with pytest.raises(ValueError):
+        prog(300).visits()
+
+
+def test_u26_parallel_conditions_run_at_the_same_time_with_the_sequential_results(tmp_path):
+    import threading
+    meet = threading.Barrier(2, timeout=20)    # both conditions must be inside an episode at once
+
+    def policy():
+        p, first = failing_first(1), [True]
+
+        def step(v):
+            if first[0]:
+                first[0] = False
+                meet.wait()
+            return p(v)
+        return step
+
+    seq_L, par_L = Ledger(tmp_path / "seq"), Ledger(tmp_path / "par")
+    assert SetRunner(seq_L, "run", prog(300), World(policy=lambda: failing_first(1)), LIMITS).run() == \
+        SetRunStatus("complete")
+    plan = prog(300).model_copy(update={"parallel_conditions": True})
+    assert SetRunner(par_L, "run", plan, World(policy=policy), LIMITS, guard=CostGuard(CostCaps())).run() == \
+        SetRunStatus("complete")
+    def key(e):
+        return e.scope, e.outcome, e.actions_used, e.finalization
+    for c in ("baseline", "product"):
+        assert [key(e) for e in episodes(par_L, c)] == [key(e) for e in episodes(seq_L, c)]
+
+
+def test_u26_ctrl_c_stops_a_parallel_set_at_the_next_decision_and_it_resumes(tmp_path):
+    import _thread
+    import threading
+    import time
+
+    def slow():
+        p = failing_first(5)
+
+        def step(v):
+            time.sleep(0.01)
+            return p(v)
+        return step
+
+    L, w = Ledger(tmp_path), World(policy=slow)
+    plan = prog(300).model_copy(update={"parallel_conditions": True})
+    threading.Timer(0.3, _thread.interrupt_main).start()
+    with pytest.raises(KeyboardInterrupt):
+        SetRunner(L, "run", plan, w, LIMITS).run()
+    n = L.db.execute("SELECT COUNT(*) FROM actions WHERE status='committed'").fetchone()[0]
+    assert 0 < n < 200                                            # both sets together would commit ~512
+    assert SetRunner(L, "run", plan, w, LIMITS).run() == SetRunStatus("complete")   # the running episodes resume
+
+
+def test_u36_attempts_stalled_in_protocol_errors_stop_the_condition_and_resume_continues(tmp_path):
+    seen = {"n": 0}
+
+    def policy(v):
+        if v.actions_used == 0 and not v.history:
+            seen["n"] += 1
+        return "not an action" if seen["n"] <= 4 else [ask(), MISS, HITS[v.task.task_id]][v.actions_used]
+    L, w = Ledger(tmp_path), World(policy=lambda: policy)
+    plan = prog(300, ("fixture_ridge",)).model_copy(update={"conditions": ["baseline"]})
+    first = SetRunner(L, "run", plan, w, LIMITS).run()
+    assert (first.status, first.episode_id) == ("protocol_stalled", "baseline-r1-e003")
+    assert SetRunner(L, "run", plan, w, LIMITS).run() == SetRunStatus("complete")    # the operator resumed
+    assert [(e.outcome, e.actions_used) for e in episodes(L)] == [(Outcome.protocol_error, 0)] * 4 + [
+        (Outcome.success, 3)]

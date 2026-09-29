@@ -9,9 +9,9 @@ quality, leakage-gate accuracy or product value.
 
 | Command | Result |
 |---|---|
-| `.venv/Scripts/python -m pytest tests/unit tests/integration tests/e2e -q` | 284 passed (4 min) |
+| `.venv/Scripts/python -m pytest tests/unit tests/integration tests/e2e -q` | 353 passed (2 min 49 s; 2026-09-28 after U10–U12 and their independent review, was 284) |
 | `.venv/Scripts/python -m pytest tests/science -q` | 6 passed — *real env*: aldenv (pinned clone) and Summit ReizmanSuzuki case 1 workers in `.envs/` |
-| `.venv/Scripts/python -m pytest tests/live -q` | 1 skipped (needs `LABGENE_LIVE=1`, an approved live profile, credentials) |
+| `.venv/Scripts/python -m pytest tests/live -q` | without opt-in: 1 skipped. With `LABGENE_LIVE=1 LABGENE_LIVE_PROFILE=configs/live.yaml` (approved $2 smoke allocation; that Gemini profile is now `configs/live-gemini-smoke.yaml`): **3 passed, live**, 8 calls, $0.106 list |
 | `python -m labgene preflight --profile configs/offline.yaml --plan configs/set_plans/smoke.yaml` | exit 0 |
 | `python -m labgene run-set --profile configs/offline.yaml --plan configs/set_plans/smoke.yaml --run-id smoke-001` | exit 0, `complete`; 2 reps × 2 conditions × 3 episodes; report labelled `contract_check` |
 | `python -m labgene report --run-id smoke-001` / `resume --run-id smoke-001` | exit 0 / exit 0 (no new actions) |
@@ -20,7 +20,10 @@ quality, leakage-gate accuracy or product value.
 | `python -m labgene validate-retrieval … --devset configs/retrieval_dev/fixture_dev.yaml` | exit 4: adoption `provisional` (reranker config cannot run offline; development set) |
 | `python -m labgene qualify-researcher …` | exit 4: the scripted fixture researcher **fails** (structured 16/24, counterexample tasks, interaction loop) and the draft suite/criteria are pending review — the tool does not pass a weak researcher |
 | `python -m labgene validate-task fixture_ridge --profile configs/offline.yaml` | exit 0, status `unvalidated` (artificial fixture) |
-| `python -m labgene preflight --profile configs/live.example.yaml` | exit 2 (credentials, caps, prices, search cap missing) |
+| `python -m labgene preflight --profile configs/live.example.yaml` | exit 2 (the five caps and every unit price are unset; subscription models must be priced at 0) |
+| `codex debug prompt-input` with the adapter's flags (`.review_scratch/prompt_input.py`) | renders the model-visible input without a model call: 7,854 → 2,705 characters of Codex context after `ISOLATION_CONFIG` (only the catalog's multi-agent role text remains) |
+| `python -m labgene preflight --profile configs/live.yaml --plan configs/set_plans/smoke.yaml` | exit 0 — U10–U12 profile; runs only `codex --version`, `codex login status`, `claude auth status` (pinned codex-cli 0.158.0 with ChatGPT login; Claude Code with the `claude.ai` subscription login); no model call |
+| same with `configs/live-gemini-smoke.yaml` | exit 0 (spec §10.1 configuration still accepted) |
 
 ## Behaviour map
 
@@ -56,10 +59,13 @@ quality, leakage-gate accuracy or product value.
 |---|---|---|
 | Stage A | harness, simulators, memory, knowledge, providers+researcher | 9 major + 24 confirmed minor fixed with regression tests (7 minor findings the reviewer did not confirm by running were not acted on) |
 | Stage B | advisors, reporting, evaluation | advisors 1 major + 3 minor; reporting 8 confirmed minor (1 unconfirmed not acted on); evaluation 1 blocker + 5 major + 10 minor — fixed with regression tests |
+| U10–U12 | Codex/Claude Code adapters, config, preflight, report | 1 major (Codex model-reroute notices ignored → now a model change) + 8 minor (adapter failures charged to the researcher, reconnect `error` discarding a good reply, empty `-o` file, helper model masking a Claude swap, CODEX_ACCESS_TOKEN, missing guards, per-call Claude version + no auto-update, reservations without the CLI's own prompt, unpriced subscription models) — fixed with regression tests; hidden Codex context reduced (`codex debug prompt-input`) |
 | Integration | app wiring, CLI, runner seams | 3 major (caps across resume/prebuild, freeze not pinning knowledge inputs, missing CLI commands) + 8 minor — fixed; plus a condition word reaching researcher inputs found while porting the parity check — fixed |
 
 ## Not verified here
 
-- Any real provider call (Gemini Interactions, embeddings, internal Astra/Fable roles, Google search): no credentials or approved caps. `tests/live` exists but is skipped.
+- Subscription CLIs (U10/U11) are verified offline only, through fake `codex exec` / `claude -p` runners: the tool protocol, the resent history, strict schemas with nullable optional fields, fail-closed isolation, effort limits and the researcher/advisor/KG paths end to end. No live call yet (waiting for the user's permission): Codex's real event stream at effort max, `--output-schema` with `anyOf`-null on gpt-6-luna, the `claude -p` result shape (`modelUsage`, `structured_output`), hidden context both CLIs may still add, latency and subscription-limit behaviour.
+
+- Real Gemini generation is verified by the live smoke only (researcher roles). Not verified live: advisors inside a full episode run, embeddings (gemini-embedding-2), internal Astra/Fable roles, Google search.
 - Leakage-gate accuracy, retrieval/answer quality, researcher qualification, pilot, main evaluation (T08/T09).
 - The Summit candidate's success rule (reachable only where the model breaks TON = yield/loading) — needs a decision.

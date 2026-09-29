@@ -1,13 +1,13 @@
 # Fixed-state-only public task (researcher qualification, spec §10.3). DRAFT - needs independent review.
 # Never run: fixed-state histories are recorded states whose values come from the evaluator-side reference
-# function qualification.FIXED_STATE_REFERENCES[simulator_id] (checked on load). Disjoint from the closed-loop
-# suite (other parameters, metrics and functions), so fixed-state content never discloses a closed-loop input.
-task_id: qual_fs_flow_selectivity
+# function qualification.FIXED_STATE_REFERENCES[simulator_id] (checked on load). Comments are evaluator-side; the
+# loaded fields are model-visible, so they carry no qualification cue (finding view-4). The last problem sentence
+# asks for the next experiment (user decision U25): every fixed-state task expects run_experiment.
+task_id: flow_selectivity
 version: '1'
-title: 'Qualification (fixed state): flow reactor conversion and selectivity under a heat budget'
-problem: Choose temperature, residence time and solvent of a flow reaction so that BOTH conversion and selectivity reach
-  their public targets without exceeding the heat-exposure budget. Artificial deterministic response used for researcher
-  qualification (fixed state).
+title: Flow reactor conversion and selectivity under a heat budget
+problem: Choose temperature, residence time and solvent of a flow reaction so that BOTH conversion and
+  selectivity reach their targets without exceeding the heat-exposure budget. At this point, choose the next experiment and reply with a run_experiment action, not a consultation.
 parameters:
 - kind: continuous
   name: temperature
@@ -48,5 +48,5 @@ success:
   direction: maximize
   target: 85.0
   tolerance: 1.0
-simulator_id: qual.fs.flow_selectivity
+simulator_id: sim.flow_selectivity
 simulator_version: '1'

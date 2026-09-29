@@ -25,7 +25,7 @@ from ..providers.base import GenerationRequest, LLMProvider, ToolSpec
 from ..providers.call import call_llm, carried_tokens
 from .analysis import AnalysisError, AnalysisTools
 
-PROMPT_VERSION = "researcher-v1"
+PROMPT_VERSION = "researcher-v3"
 
 _CONTEXT = """You are part of a research agent solving a virtual-experiment task. The user message is JSON.
 `researcher_view` holds the public task (parameters with units and allowed ranges, linear constraints, metrics,
@@ -63,18 +63,43 @@ ONE JSON object only:
 or {"action":"run_experiment","args":{"hypothesis":"...","parameters":{"<name>":<value>, ...}}}
 `parameters` must give every task parameter exactly once, in public units, within ranges and constraints.
 You may add "note": {"hypotheses":[...],"observation_ids":[...],"support":[...],"refute":[...],
-"uncertainty":"...","next_action_reason":"..."} (short). Do not claim success; the harness judges it."""
+"uncertainty":"...","next_action_reason":"..."} (short). Each "support"/"refute" entry starts with the id of the
+hypothesis it supports/refutes, e.g. "H2: <evidence>". Do not claim success; the harness judges it."""
 
-PROMPT_HASH = sha256_text(canonical_json([PROMPT_VERSION, PLANNER_SYSTEM, REVIEWER_SYSTEM, FINALIZER_SYSTEM]))
+# U45: every experiment follows exactly one consultation (`required_action` in the view names the allowed action).
+_ACTIONS = _CONTEXT[_CONTEXT.index("Actions (chosen"):]   # the action paragraph, replaced as a whole
+_PAIRED_TEXT = [
+    (_ACTIONS, """Actions (chosen later by the finalizer, exactly one per decision): `consult` asks the consultation system one
+question (1 action); `run_experiment` runs one parameter combination (1 action; an invalid request also costs 1).
+Rule of this evaluation: every experiment follows exactly one consultation, so actions alternate consult,
+run_experiment, consult, run_experiment, ...; `required_action` in `researcher_view` is the only action allowed now.
+Ask the question whose answer would help you most in choosing the next experiment."""),
+    ("whether a consultation is worth an action now",
+     "the question to ask when `required_action` is consult, or how the latest answer bears on the experiment when "
+     "it is run_experiment")]
 
 
-def action_schema(task: PublicTask) -> dict[str, Any]:
-    """Structured-output schema (Gemini JSON Schema subset): types only. Ranges/units are checked by the harness."""
+def _paired(system: str) -> str:
+    for old, new in _PAIRED_TEXT:
+        system = system.replace(old, new)
+    return system
+
+
+# (planner, reviewer, finalizer), keyed by "a required action alternates consult/run_experiment" (U45)
+SYSTEMS = {False: (PLANNER_SYSTEM, REVIEWER_SYSTEM, FINALIZER_SYSTEM)}
+SYSTEMS[True] = tuple(_paired(s) for s in SYSTEMS[False])
+
+PROMPT_HASH = sha256_text(canonical_json([PROMPT_VERSION, SYSTEMS[False], SYSTEMS[True]]))
+
+
+def action_schema(task: PublicTask, only: str | None = None) -> dict[str, Any]:
+    """Structured-output schema (Gemini JSON Schema subset): types only. Ranges/units are checked by the harness.
+    only: the one action allowed now (U45 required_action)."""
     params = {p.name: {"type": "string", "enum": p.choices} if isinstance(p, CategoricalParam)
               else {"type": "integer" if isinstance(p, IntegerParam) else "number"} for p in task.parameters}
     strs = {"type": "array", "items": {"type": "string"}}
     return {"type": "object", "required": ["action", "args"], "properties": {
-        "action": {"type": "string", "enum": ["consult", "run_experiment"]},
+        "action": {"type": "string", "enum": [only] if only else ["consult", "run_experiment"]},
         "args": {"type": "object", "properties": {"question": {"type": "string"}, "hypothesis": {"type": "string"},
                                                    "parameters": {"type": "object", "properties": params}}},
         "note": {"type": "object", "properties": {"hypotheses": strs, "observation_ids": strs, "support": strs,
@@ -157,19 +182,20 @@ class PlannerReviewerResearcher:
         tools = AnalysisTools(view)
         analysis: list[AnalysisResult] = []
         v = view.model_dump(mode="json")
-        plan = self._phase("researcher_planner", PLANNER_SYSTEM, {"researcher_view": v}, tools, ctx, analysis)
+        planner, reviewer, finalizer = SYSTEMS[view.required_action is not None]
+        plan = self._phase("researcher_planner", planner, {"researcher_view": v}, tools, ctx, analysis)
         if plan.status is ProviderStatus.infra_error:
             return ResearcherDecision(raw_action_text=None, status="infra_error", analysis=analysis,
                                       error=f"researcher_planner: {plan.error}")
-        review = self._phase("researcher_reviewer", REVIEWER_SYSTEM,
+        review = self._phase("researcher_reviewer", reviewer,
                              {"researcher_view": v, "planner_proposal": _as_input(plan)}, tools, ctx, analysis)
         if review.status is ProviderStatus.infra_error:
             return ResearcherDecision(raw_action_text=None, status="infra_error", analysis=analysis,
                                       error=f"researcher_reviewer: {review.error}")
         final_input = {"researcher_view": v, "planner_proposal": _as_input(plan), "reviewer_critique": _as_input(review)}
-        final = self._call(self._request("researcher_finalizer", FINALIZER_SYSTEM,
+        final = self._call(self._request("researcher_finalizer", finalizer,
                                          [{"role": "user", "text": canonical_json(final_input)}], [],
-                                         schema=action_schema(view.task)), ctx)
+                                         schema=action_schema(view.task, view.required_action)), ctx)
         status = _DECISION_STATUS[final.status]
         return ResearcherDecision(raw_action_text=final.text, status=status,
                                   note=_note(final.text) if status == "ok" else None, analysis=analysis,

@@ -62,6 +62,12 @@ def exposure(text: str, meta: dict[str, Any]) -> str:
                         for k in EXPOSED_META if meta.get(k)), text])
 
 
+def gate_identity(bundles: list[AnswerBundle], set_scope: str, checker: LeakageChecker) -> str:
+    """What every approval in a state belongs to: answer bundles, set scope, checker, policy, preprocessing."""
+    return payload_hash([sorted(payload_hash(b) for b in bundles), set_scope, checker.checker_id,
+                         checker.policy_version, PREPROCESSING_VERSION])
+
+
 def unavailable(source_id: str) -> SourceView:
     """The only thing a model learns on block/hold/error/missing: no title, no detail."""
     return SourceView(source_id=source_id, title="", text=UNAVAILABLE_MESSAGE, status="unavailable")
@@ -71,7 +77,7 @@ class KnowledgeStore:
     def __init__(self, state_dir: str | Path, checker: LeakageChecker, bundles: list[AnswerBundle], set_scope: str,
                  *, embedder: Any = None, ontology: Ontology | None = None,
                  retrieval: RetrievalConfig = RetrievalConfig(), reranker: LLMReranker | None = None,
-                 execution_mode: str = "offline_fixture"):
+                 execution_mode: str = "offline_fixture", regating: bool = False):
         if not bundles:
             raise ValueError("no answer bundles: the leakage gate cannot run")
         if execution_mode != "offline_fixture":
@@ -89,15 +95,17 @@ class KnowledgeStore:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(_SCHEMA)
-        # ponytail: a changed identity refuses the state; in-place re-gating of every approval if rebuilds cost too much
-        ident = payload_hash([sorted(payload_hash(b) for b in bundles), set_scope, checker.checker_id,
-                              checker.policy_version, PREPROCESSING_VERSION])
+        # a changed identity refuses the state; knowledge/regate.py re-decides every approval under a new one (U39)
+        ident = gate_identity(bundles, set_scope, checker)
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO state VALUES ('gate_identity', ?)", (ident,))
         if self.get_state("gate_identity") != ident:
             self.db.close()
             raise ValueError("this knowledge state was gated under other answer bundles, set scope, checker or "
                              "policy; its approvals cannot be reused: build a fresh state dir")
+        if self.get_state("regate_status") == "in_progress" and not regating:   # identity switched, items unchecked
+            self.db.close()
+            raise ValueError("this knowledge state is being re-gated; finish the re-gate before using it")
         if embedder is None and (self.dir / "index" / "manifest.json").exists():
             self.db.close()
             raise ValueError("this state's vector index is pinned to an embedder; pass it (no BM25-only fallback)")

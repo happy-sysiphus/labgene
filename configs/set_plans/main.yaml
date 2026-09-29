@@ -1,0 +1,10 @@
+# U26/U27 main evaluation (2026-09-29): progression c1 -> c2 -> c3 -> c4; a task is retried until cleared; the set
+# ends when all four are cleared or 300 actions are used (last attempt truncated to the remaining budget).
+# One set rep (descriptive result). Primary metric: tasks cleared, tie -> total actions (analysis plan v1).
+set_id: main
+reps: 1
+conditions: [baseline, product]
+mode: progression
+episodes: [suzuki_flow_01, suzuki_flow_02, suzuki_flow_03, suzuki_flow_04]
+action_budget: 300
+parallel_conditions: true    # U26: both conditions run at the same time

@@ -1,0 +1,60 @@
+# Main-evaluation task v2 (U44, 2026-09-29): Reizman Suzuki case 3 emulator, public id suzuki_ton_03.
+# Objective: maximize TON at yield >= 95 % of the emulator's best; the TON threshold is evaluator-held
+# (hidden_success). Register only when registrable_for_evaluation() is true.
+task_id: suzuki_ton_03
+version: '1'
+title: 'Maximize TON at high yield: 3-chloropyridine with benzofuran-2-boronic acid'
+problem: 'Choose the palladium precatalyst (a 2-aminobiphenyl palladacycle precatalyst: generation G3 = mesylate, G2 = chloride,
+  with the named phosphine ligand), the residence time, the temperature and the catalyst loading for the Suzuki-Miyaura
+  cross-coupling of 3-chloropyridine with benzofuran-2-boronic acid (1.5 equiv) using DBU (2.0 equiv) in THF/water 5:1 in
+  an automated continuous-flow (droplet) reactor, so as to MAXIMIZE the turnover number (TON = mol product per mol Pd =
+  yield % / catalyst loading mol%) while keeping the product yield at or above 88.28 % (95 % of the best yield this reactor
+  model reaches). The run succeeds when an experiment reaches that yield AND a TON within 2 % of the best TON achievable
+  under that yield constraint; the evaluator holds that best TON value and does not reveal it.'
+parameters:
+- kind: categorical
+  name: catalyst
+  choices:
+  - PCy3 Pd G3
+  - PPh3 Pd G3
+  - PtBu3 Pd G3
+  - RuPhos Pd G3
+  - SPhos Pd G3
+  - Xantphos Pd G3
+  - XPhos Pd G2
+  - XPhos Pd G3
+  description: 'palladium precatalyst: ligand + palladacycle generation'
+- kind: continuous
+  name: residence_time
+  unit: s
+  min: 60
+  max: 600
+- kind: continuous
+  name: temperature
+  unit: degC
+  min: 30
+  max: 110
+- kind: continuous
+  name: catalyst_loading
+  unit: mol%
+  min: 0.5
+  max: 2.5
+metrics:
+- name: yield
+  unit: '%'
+  direction: maximize
+- name: ton
+  unit: '1'
+  direction: maximize
+success:
+- metric: yield
+  direction: maximize
+  target: 88.28
+  tolerance: 0.0
+hidden_success:
+- metric: ton
+  direction: maximize
+  rule: TON within 2 % of the best TON this reactor model reaches while keeping yield >= 88.28 % (the evaluator holds that
+    TON value; it is not given to you)
+simulator_id: sim.suzuki_c3
+simulator_version: w-5e5ab978f54c9529

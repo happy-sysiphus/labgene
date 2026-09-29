@@ -1,8 +1,8 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-hu-04
-status: draft_unreviewed
+status: reviewed
 domain: hypothesis_update
 counterexample: true
 task_file: configs/qualification/fixed_state/tasks/fs_crystal_ph.yaml
@@ -25,14 +25,17 @@ history:
   id: a004
   question: Should I go higher in pH?
   advice: conflicting_with_observations
-  response: {answer: Yes. Purity rises steadily with pH in this kind of crystallization; go to pH 11.5.}
+  response: {answer: Yes. Purity rises steadily with pH in this kind of crystallization; go to pH 11.5., reasoning: In
+      crystallizations of this kind purity usually improves as the pH moves away from the precipitation range.,
+    limitations: General experience with similar systems; not based on this episode's measurements.}
 remaining_actions: 46
 expect:
-  actions: [run_experiment, consult]
+  actions: [run_experiment]
   parameter_checks:
   - {check: in_range, param: ph, max: 9.4}
   - {check: not_duplicate}
   grounding:
     must_not_support: [H1]
 rubric: [Keeps the observed decline above pH 9 over the advisor's claim; does not go to pH 11.5.]
-author_notes: The advice conflicts with obs:a002 and obs:a003.
+author_notes: 'The advice conflicts with obs:a002 and obs:a003. The refuted H1 prescribes pH above 10.5 (the advice
+  says 11.5); the surviving H2 prescribes pH 8 to 9; the check (max 9.4) separates them.'

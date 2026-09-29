@@ -1,0 +1,9 @@
+# U28 pilot (2026-09-29): one c1 attempt per condition (progression over case 1 with a 50-action set budget:
+# the set ends when c1 is cleared or its single attempt is used up). Pilot results are never counted (U28).
+set_id: pilot
+reps: 1
+conditions: [baseline, product]
+mode: progression
+episodes: [suzuki_flow_01]
+action_budget: 50
+parallel_conditions: true    # U26: both conditions run at the same time

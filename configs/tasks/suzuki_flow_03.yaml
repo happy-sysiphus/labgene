@@ -1,0 +1,57 @@
+# Main-evaluation task (U21-U24, 2026-09-29): Reizman Suzuki case 3 emulator, public id suzuki_flow_03.
+# TON = yield / loading (derived in the worker); success rule calibrated by U22 (see the validation report);
+# public names instead of the paper's codes (U23). Validated 2026-09-29 (docs/implementation/task-validation/suzuki_flow_03.json).
+task_id: suzuki_flow_03
+version: "1"
+title: 'Suzuki-Miyaura coupling in flow: 3-chloropyridine with benzofuran-2-boronic acid'
+problem: 'Choose the palladium precatalyst (a 2-aminobiphenyl palladacycle precatalyst: generation G3 = mesylate, G2 = chloride,
+  with the named phosphine ligand), the residence time, the temperature and the catalyst loading for the Suzuki-Miyaura
+  cross-coupling of 3-chloropyridine with benzofuran-2-boronic acid (1.5 equiv) using DBU (2.0 equiv) in THF/water 5:1 in
+  an automated continuous-flow (droplet) reactor, so that BOTH the product yield and the turnover number (TON = mol product
+  per mol Pd = yield % / catalyst loading mol%) reach their targets.'
+parameters:
+- kind: categorical
+  name: catalyst
+  choices:
+  - PCy3 Pd G3
+  - PPh3 Pd G3
+  - PtBu3 Pd G3
+  - RuPhos Pd G3
+  - SPhos Pd G3
+  - Xantphos Pd G3
+  - XPhos Pd G2
+  - XPhos Pd G3
+  description: 'palladium precatalyst: ligand + palladacycle generation'
+- kind: continuous
+  name: residence_time
+  unit: s
+  min: 60
+  max: 600
+- kind: continuous
+  name: temperature
+  unit: degC
+  min: 30
+  max: 110
+- kind: continuous
+  name: catalyst_loading
+  unit: mol%
+  min: 0.5
+  max: 2.5
+metrics:
+- name: yield
+  unit: '%'
+  direction: maximize
+- name: ton
+  unit: '1'
+  direction: maximize
+success:
+- metric: yield
+  direction: maximize
+  target: 85.98
+  tolerance: 1.0
+- metric: ton
+  direction: maximize
+  target: 71.65
+  tolerance: 1.0
+simulator_id: sim.suzuki_c3
+simulator_version: w-5e5ab978f54c9529

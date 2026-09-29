@@ -1,0 +1,50 @@
+{
+  "profile_sha256": "631dfea3f7a9f9fa19b479b55894104403710864721665521682e7c8a96d6141",
+  "set_plan_sha256": "690fbc31865cfeb18ca4ee925daab221b032d8b627eaba8950bf93067b9522c8",
+  "tasks": {
+    "suzuki_ton_01": "fa34bcc9ba87cde06610a851f2946c1073c3df39275ebfe73a82cb1cd219a9dc",
+    "suzuki_ton_02": "6cc01944bfa13075aefdfbb7b1c1e37c28ac245f1c69ce54857393ccff724b7f",
+    "suzuki_ton_03": "c5323246eddf8985f0667fa5b650761cc808b13e21665ebec19e01b992d0c324",
+    "suzuki_ton_04": "3824902efab30d199618aca269cccd34bd6d1704deb86bef2fde049f4bb2cefb"
+  },
+  "source_tree_sha256": "e7dccc13187aca2a8f220e1bd3c4564d3d483776c4ff85896406674f58a64625",
+  "spec_sha256": "13dddb0687eb2cc69636cab1a7e046096124983f497430a0bd2bcb1645e853a6",
+  "prompts": {
+    "researcher": {
+      "version": "researcher-v2",
+      "sha256": "98be6720f0e2d03d493a5054022e8503e64e1a065dc6050c158b8e9474eb91a9"
+    },
+    "advisor_baseline": {
+      "version": "advisor-v1",
+      "sha256": "d1f2a8764bc6f2d5392924e8c14b9fddd32d07408d553702dec3c9d936e9a76e"
+    },
+    "advisor_product": {
+      "version": "advisor-v1",
+      "sha256": "bbf260ee20ef3a5d7fc832058faa7032c86adb37d02f310b3c5c29e6e863abda"
+    }
+  },
+  "knowledge_inputs": {
+    "corpus": "efb41ae209e22c405bb8c0deabe1b4103645f9140fd45ec226190b9fbbb0600f",
+    "baseline_initial_text": "ce29a2309513507914bac95ecd942c572e0f3f3d448b4abcfe251c75cd87bfe3",
+    "ontology_profile": "ed2bdfea8f3fd80186e7e6f819fbf825f5f6165297bda4f69db789ffba9b9950"
+  },
+  "answer_bundles": {
+    "suzuki_ton_01": "3a25f93cccc712eb45e65d877275710b54c6e028398485f7805108dc5215e4d7",
+    "suzuki_ton_02": "b5e5aff50cbf6c381c7416fd066c485b8ad1f4bd9ba0919557b8b0f0d24668ae",
+    "suzuki_ton_03": "a01fa190bc2af300e10b07273a9cf73cd7b4ea3b9c3245f043b42fba729f02d1",
+    "suzuki_ton_04": "4ef2133eecb200d696194026c4085330426c2a8796adcd50767796d2db5fe166"
+  },
+  "task_validation_reports": {
+    "suzuki_ton_01": "34c541f22fdb7d2828b9402ca8a14aa84ba9ace5ed94049843fea5f5ba1025af",
+    "suzuki_ton_02": "f399480e29e9452e745c5fff1293485628080a841d2a14ebfb3a58663b487760",
+    "suzuki_ton_03": "b151d76a7e5e9d24d7822472f51571f865121216b184079bc6f1f07d1c655854",
+    "suzuki_ton_04": "65719615bcdbbd191ba5d0c692caceccee64428edb6c80237ad5e40e0ca83c83"
+  },
+  "initial_states": {
+    "baseline": "b037107581daee6b6178f32deb28cd7e11acaa67da34d101092a888d8a4d2dff",
+    "product": "175bc7a1f39d593550fbec4744b6ff8e25806fc2ef69a8538b314e5b7f4a6de4"
+  },
+  "frozen_at": "2026-09-29T06:55:31+00:00",
+  "analysis_plan_sha256": "ab48e5bb652af181917233db006f33baff8dbeb7fb40e55f03c9bfd770c4851d",
+  "analysis_plan_path": "docs/implementation/analysis-plan-v2.md"
+}

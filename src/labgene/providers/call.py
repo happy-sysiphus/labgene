@@ -60,7 +60,9 @@ def call_llm(provider: LLMProvider, req: GenerationRequest, ctx: CallContext, li
                 raise CapExceeded(f"{req.role}: continuation history size unknown, it cannot be reserved under a cap")
             # An exception out of generate() leaves this reservation open: conservative (counts toward caps).
             carried = (context_tokens or 0) if req.previous_interaction_id else 0
-            reservation = guard.reserve(req.model, estimate_input_tokens(req) + carried, req.max_output_tokens or 0)
+            overhead = getattr(provider, "input_overhead_tokens", 0)   # the CLI's own prompt around ours
+            reservation = guard.reserve(req.model, estimate_input_tokens(req) + carried + overhead,
+                                        req.max_output_tokens or 0)
         res = provider.generate(req).model_copy(update={"attempt": attempt})
         if reservation is not None:
             guard.settle(reservation, res.usage)
@@ -68,7 +70,9 @@ def call_llm(provider: LLMProvider, req: GenerationRequest, ctx: CallContext, li
                  request_id=res.request_id, usage=res.usage, latency_s=res.latency_s, attempt=attempt,
                  detail={"endpoint": res.endpoint, "interaction_id": res.interaction_id,
                          "previous_interaction_id": req.previous_interaction_id, "store": req.store,
-                         "model_returned": res.model_returned, "sdk_version": res.sdk_version, "error": res.error})
+                         "model_returned": res.model_returned, "sdk_version": res.sdk_version, "error": res.error,
+                         "model_verified": getattr(provider, "echoes_model", True),
+                         "billing": getattr(provider, "billing", "per_token")})
         # A generated reply must name its model: without it a change cannot be detected (§10.1), so fail closed.
         # Error replies (infra_error, HTTP-level refusal) carry no model and are exempt.
         if res.model_returned is None and res.status in (ProviderStatus.ok, ProviderStatus.incomplete):
@@ -81,7 +85,8 @@ def call_llm(provider: LLMProvider, req: GenerationRequest, ctx: CallContext, li
     raise AssertionError("unreachable: provider_max_attempts must be >= 1")
 
 
-ENDPOINTS = {"fixture": "fixture", "gemini": "interactions", "openai": "responses", "anthropic": "messages"}
+ENDPOINTS = {"fixture": "fixture", "gemini": "interactions", "openai": "responses", "anthropic": "messages",
+             "codex": "codex_exec", "claude_code": "claude_cli"}
 
 
 def build_llm(role_cfg: RoleModel, fixture_policy: FixturePolicy | None = None, transport: Transport | None = None,
@@ -91,6 +96,12 @@ def build_llm(role_cfg: RoleModel, fixture_policy: FixturePolicy | None = None, 
                          f"got {role_cfg.endpoint!r}")
     if role_cfg.provider == "fixture":
         return FixtureProvider(policy=fixture_policy)
+    if role_cfg.provider == "codex":         # subscription CLI: gate (U8/U9), researcher + advisors (U10)
+        from .codex_cli import CodexExecProvider
+        return CodexExecProvider(timeout_s=timeout_s)
+    if role_cfg.provider == "claude_code":   # subscription CLI, single-shot internal roles (U11)
+        from .claude_cli import ClaudeCodeProvider
+        return ClaudeCodeProvider(timeout_s=timeout_s)
     cls = {"gemini": GeminiInteractionsProvider, "openai": OpenAIResponsesProvider,
            "anthropic": AnthropicMessagesProvider}[role_cfg.provider]
     return cls(transport=transport, timeout_s=timeout_s)

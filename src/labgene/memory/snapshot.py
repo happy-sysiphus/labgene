@@ -100,15 +100,34 @@ def snapshot_state(state_dir: str | Path, dest_dir: str | Path) -> dict[str, Any
     return manifest
 
 
-def restore_state(snapshot_dir: str | Path, state_dir: str | Path) -> dict[str, Any]:
-    """Restore a snapshot into state_dir. A non-empty target is moved aside to
-    <state_dir>.superseded-<n> (never deleted). Raises if the restored logical hash differs."""
-    snap, target = Path(snapshot_dir), Path(state_dir)
+def verify_snapshot(snapshot_dir: str | Path) -> dict[str, Any]:
+    """The snapshot's manifest, after checking every file against it (raises ValueError on any difference)."""
+    snap = Path(snapshot_dir)
     manifest = json.loads((snap / MANIFEST).read_text(encoding="utf-8"))
     src = snap / "state"
     actual = {p.relative_to(src).as_posix(): _sha256(p) for p in src.rglob("*") if p.is_file()}
     if actual != {k: v["sha256"] for k, v in manifest["files"].items()}:
         raise ValueError(f"snapshot files do not match manifest: {snap}")
+    return manifest
+
+
+def copy_snapshot(snapshot_dir: str | Path, dest_dir: str | Path) -> dict[str, Any]:
+    """Copy a verified snapshot (state + manifest) to an empty dest_dir; the copy is verified too (U39)."""
+    verify_snapshot(snapshot_dir)
+    src, dest = Path(snapshot_dir), Path(dest_dir)
+    if dest.exists() and any(dest.iterdir()):
+        raise FileExistsError(f"snapshot destination is not empty: {dest}")
+    shutil.copytree(src / "state", dest / "state")
+    shutil.copy2(src / MANIFEST, dest / MANIFEST)          # last: the manifest marks a complete copy
+    return verify_snapshot(dest)
+
+
+def restore_state(snapshot_dir: str | Path, state_dir: str | Path) -> dict[str, Any]:
+    """Restore a snapshot into state_dir. A non-empty target is moved aside to
+    <state_dir>.superseded-<n> (never deleted). Raises if the restored logical hash differs."""
+    snap, target = Path(snapshot_dir), Path(state_dir)
+    manifest = verify_snapshot(snap)
+    src = snap / "state"
     if target.exists() and any(target.iterdir()):
         n = 1
         while (aside := target.parent / f"{target.name}.superseded-{n}").exists():

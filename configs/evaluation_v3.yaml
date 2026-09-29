@@ -1,0 +1,128 @@
+# Evaluation profile v3 (U45, 2026-09-29): the v2 profile (roles, Opus leakage gate U42, limits, caps, the v2 initial
+# knowledge states from artifacts/state-v2) with only its id and frozen manifest changed; the U45 rule is in the plan.
+# Keys live in .env. Subscription models are priced at 0; max_usd guards the embeddings API.
+profile_id: eval-suzuki-ton-v3
+execution_mode: evaluation
+roles:
+  researcher:
+    provider: codex
+    model: gpt-6-luna
+    endpoint: codex_exec
+    reasoning_effort: max
+    max_output_tokens: 65536
+  advisor_baseline:
+    provider: codex
+    model: gpt-6-luna
+    endpoint: codex_exec
+    reasoning_effort: max
+    max_output_tokens: 65536
+  advisor_product:
+    provider: codex
+    model: gpt-6-luna
+    endpoint: codex_exec
+    reasoning_effort: max
+    max_output_tokens: 65536
+  internal_summarizer:
+    provider: claude_code
+    model: claude-opus-5-5
+    endpoint: claude_cli
+    reasoning_effort: max
+    max_output_tokens: 32768
+  kg_extractor:
+    provider: claude_code
+    model: claude-opus-5-5
+    endpoint: claude_cli
+    reasoning_effort: medium
+    max_output_tokens: 32768
+  leakage_gate:
+    provider: claude_code
+    model: claude-opus-5-5
+    endpoint: claude_cli
+    reasoning_effort: low
+    max_output_tokens: 1024
+  embedder:
+    provider: gemini
+    model: gemini-embedding-2
+    endpoint: embed_content
+    dimensions: 3072
+limits:
+  development_only: false
+  provider_max_attempts: 3
+  provider_timeout_s: 900
+  researcher_max_analysis_calls: 1
+  advisor_max_tool_calls: 2
+cost_caps:
+  max_calls: 8000
+  max_input_tokens: 70000000
+  max_output_tokens: 15000000
+  max_usd: 3.0
+  max_wall_s: 259200
+  prices:
+    gpt-6-luna:
+      input_usd_per_mtok: 0.0
+      output_usd_per_mtok: 0.0
+    gpt-6-astra:
+      input_usd_per_mtok: 0.0
+      output_usd_per_mtok: 0.0
+    claude-opus-5-5:
+      input_usd_per_mtok: 0.0
+      output_usd_per_mtok: 0.0
+    gemini-embedding-2:
+      input_usd_per_mtok: 0.2
+      output_usd_per_mtok: 0.0
+search:
+  provider: none
+knowledge:
+  corpus_dir: data/corpus
+  baseline_initial_text: data/baseline_initial_text.md
+  ontology_profile: configs/ontology/suzuki_flow.yaml
+  initial_state_from: artifacts/state-v2
+simulators:
+  sim.suzuki_c1:
+    backend: worker
+    python: .envs/summit/Scripts/python.exe
+    worker_args:
+    - --backend
+    - summit
+    - --source
+    - .envs/src/summit
+    - --case
+    - '1'
+    timeout_s: 120
+  sim.suzuki_c2:
+    backend: worker
+    python: .envs/summit/Scripts/python.exe
+    worker_args:
+    - --backend
+    - summit
+    - --source
+    - .envs/src/summit
+    - --case
+    - '2'
+    timeout_s: 120
+  sim.suzuki_c3:
+    backend: worker
+    python: .envs/summit/Scripts/python.exe
+    worker_args:
+    - --backend
+    - summit
+    - --source
+    - .envs/src/summit
+    - --case
+    - '3'
+    timeout_s: 120
+  sim.suzuki_c4:
+    backend: worker
+    python: .envs/summit/Scripts/python.exe
+    worker_args:
+    - --backend
+    - summit
+    - --source
+    - .envs/src/summit
+    - --case
+    - '4'
+    timeout_s: 120
+paths:
+  tasks_dir: configs/tasks
+  private_dir: private
+frozen_manifest: configs/frozen/main-v3.json

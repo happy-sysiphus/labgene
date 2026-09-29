@@ -1,0 +1,106 @@
+# Product RAG development set over the approved Suzuki corpus (data/corpus, 10 documents, U19 approved list).
+# Queries are what a researcher or advisor would plausibly ask about the Suzuki flow tasks; every answer is general
+# chemistry found in the corpus, never an answer-paper result. Gold references are doc (file stem) + section heading as
+# parsed by knowledge/parse.py (md-struct-v1); the two documents without subheadings (protodeboronation_mechanism,
+# suzuki_coupling_textbook) are referenced as whole documents. Each gold section was checked by reading it
+# (2026-09-29); .review_scratch/authoring/check_suzuki_inputs.py confirms every reference resolves to parsed chunks.
+# The whole set (queries, gold, k, configs, adoption rule) is pinned by hash per version before any run; any change
+# needs a new version. No reranker config: the product profile uses none.
+version: retrieval-dev-suzuki-v1
+status: reviewed
+corpus: data/corpus
+k: 8
+configs: [bm25_only, dense_only, rrf]
+adoption_rule:
+  primary: recall_at_k
+  tie_break: [mrr, cost_rank]          # ties -> higher MRR, then the cheaper config
+  cost_rank: {bm25_only: 0, dense_only: 1, rrf: 2}
+  min_recall_at_k: 0.8                 # U31 acceptance bar
+queries:
+  - query_id: q01
+    query: which phosphine ligands enable Suzuki coupling of unactivated heteroaryl chlorides
+    relevant:
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Development of General Catalysts for Suzuki-Miyaura Reactions}
+      - {doc: trialkylphosphine_coupling_review, section: 2. Suzuki Reactions}
+      - {doc: biaryl_phosphine_ligands_encyclopedia, section: SPhos}
+  - query_id: q02
+    query: why are aryl chlorides slow in oxidative addition and how do bulky electron-rich phosphines help
+    relevant:
+      - {doc: trialkylphosphine_coupling_review, section: 1. Introduction}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: "Background: Dialkylbiarylphosphines"}
+      - {doc: suzuki_coupling_textbook}
+  - query_id: q03
+    query: how does base activate a 2-aminobiphenyl palladacycle precatalyst to the active Pd(0) species
+    relevant:
+      - {doc: precatalyst_activation_speciation, section: Introduction}
+      - {doc: palladacycle_precatalyst_design, section: Introduction}
+  - query_id: q04
+    query: G2 chloride versus G3 mesylate palladacycle precatalysts, solution stability and ligand scope
+    relevant:
+      - {doc: palladacycle_precatalyst_design, section: Abstract}
+      - {doc: palladacycle_precatalyst_design, section: Results and Discussion}
+  - query_id: q05
+    query: mechanism and rate of base-catalyzed protodeboronation of arylboronic acids
+    relevant:
+      - {doc: protodeboronation_mechanism}
+  - query_id: q06
+    query: coupling unstable boronic acids prone to protodeboronation with fast catalyst activation and short reaction times
+    relevant:
+      - {doc: palladacycle_precatalyst_design, section: Results and Discussion}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Development of General Catalysts for Suzuki-Miyaura Reactions}
+  - query_id: q07
+    query: role of the base in transmetalation, boronate pathway versus oxo-palladium pathway
+    relevant:
+      - {doc: phase_transfer_transmetalation, section: Abstract}
+      - {doc: phase_transfer_transmetalation, section: Introduction}
+      - {doc: phase_transfer_transmetalation, section: Results and discussion}
+      - {doc: suzuki_reaction_encyclopedia, section: Transmetalation}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Introduction}
+  - query_id: q08
+    query: does a boronic acid pinacol ester transmetalate directly or hydrolyze to the boronic acid first
+    relevant:
+      - {doc: phase_transfer_transmetalation, section: Results and discussion}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Development of General Catalysts for Suzuki-Miyaura Reactions}
+  - query_id: q09
+    query: how low can the palladium catalyst loading go and what turnover numbers are reached in Suzuki couplings
+    relevant:
+      - {doc: suzuki_reaction_encyclopedia, section: Advantages}
+      - {doc: phase_transfer_transmetalation, section: Results and discussion}
+      - {doc: suzuki_coupling_textbook}
+      - {doc: trialkylphosphine_coupling_review, section: 2. Suzuki Reactions}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Development of General Catalysts for Suzuki-Miyaura Reactions}
+  - query_id: q10
+    query: is the choice of solvent or the reaction temperature more important for Suzuki coupling conversion
+    relevant:
+      - {doc: solvent_effects_caution, section: Findings}
+  - query_id: q11
+    query: effect of water content and the aqueous to organic phase ratio in biphasic Suzuki couplings
+    relevant:
+      - {doc: phase_transfer_transmetalation, section: Abstract}
+      - {doc: phase_transfer_transmetalation, section: Results and discussion}
+      - {doc: solvent_effects_caution, section: Findings}
+  - query_id: q12
+    query: monoligated L1Pd intermediates and the ligand to palladium ratio
+    relevant:
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: "Background: Dialkylbiarylphosphines"}
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Introduction}
+      - {doc: trialkylphosphine_coupling_review, section: 2. Suzuki Reactions}
+  - query_id: q13
+    query: side reactions of N-Boc-pyrrole-2-boronic acid couplings such as homocoupling, protodeboronation and aryl halide reduction
+    relevant:
+      - {doc: dialkylbiaryl_phosphine_ligands_review, section: Development of General Catalysts for Suzuki-Miyaura Reactions}
+  - query_id: q14
+    query: carbazole byproduct and catalyst inhibition from activation of G2 and G3 palladacycle precatalysts
+    relevant:
+      - {doc: precatalyst_activation_speciation, section: Introduction}
+  - query_id: q15
+    query: PCy3 versus P(t-Bu)3 as ligands for palladium-catalyzed Suzuki coupling of aryl chlorides and triflates
+    relevant:
+      - {doc: trialkylphosphine_coupling_review, section: 2. Suzuki Reactions}
+      - {doc: trialkylphosphine_coupling_review, section: 7. Mechanistic Observations}
+  - query_id: q16
+    query: common bases and solvent systems such as THF and water for Suzuki-Miyaura couplings
+    relevant:
+      - {doc: suzuki_reaction_encyclopedia, section: Solvent variations}
+      - {doc: suzuki_coupling_textbook}
+      - {doc: precatalyst_activation_speciation, section: "Studies Understanding the Behavior of 1 in Benchmark Suzuki–Miyaura Cross-Coupling (SMCC) Reactions"}

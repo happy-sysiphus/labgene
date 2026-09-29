@@ -6,15 +6,22 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .contracts import CONDITIONS, Condition, ExecutionMode, PublicTask, payload_hash
 
 SPEC_MODEL = "gemini-3.1-pro-preview"
 SPEC_THINKING = "high"
+# Runtime configs approved for the researcher and both advisors; all three must use the SAME one (fairness).
+APPROVED_AGENT_CONFIGS = {
+    "spec §10.1": {"provider": "gemini", "model": SPEC_MODEL, "endpoint": "interactions", "thinking_level": SPEC_THINKING},
+    "U10": {"provider": "codex", "model": "gpt-6-luna", "endpoint": "codex_exec", "reasoning_effort": "max"},
+}
+AGENT_ROLES = ("researcher", "advisor_baseline", "advisor_product")
 
-ProviderName = Literal["fixture", "gemini", "openai", "anthropic"]
+ProviderName = Literal["fixture", "gemini", "openai", "anthropic", "codex", "claude_code"]
 CREDENTIAL_ENV = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}
+SUBSCRIPTION_CLI = {"codex", "claude_code"}   # CLIs logged in with a subscription plan: no API key, no per-token price
 
 
 class Strict(BaseModel):
@@ -24,7 +31,8 @@ class Strict(BaseModel):
 class RoleModel(Strict):
     provider: ProviderName
     model: str
-    endpoint: Literal["interactions", "responses", "messages", "embed_content", "fixture"] = "fixture"
+    endpoint: Literal["interactions", "responses", "messages", "embed_content", "codex_exec", "claude_cli",
+                      "fixture"] = "fixture"
     thinking_level: str | None = None          # Gemini: generation_config.thinking_level
     reasoning_effort: str | None = None        # OpenAI Responses / Anthropic effort
     max_output_tokens: int | None = None
@@ -96,6 +104,9 @@ class KnowledgeConfig(Strict):
     baseline_initial_text: str | None = "tests/fixtures/corpus/general_background.md"
     ontology_profile: str = "tests/fixtures/ontology/profile.yaml"
     retrieval: RetrievalConfig = RetrievalConfig()
+    # U39: a run dir whose initial/<condition> snapshots this run copies instead of building them. They must be gated
+    # under this run's answer bundles and set scope (`regate-state` re-gates a pilot build for the main plan).
+    initial_state_from: str | None = None
 
 
 class SimulatorConfig(Strict):
@@ -149,10 +160,31 @@ class SetPlan(Strict):
     set_id: str
     reps: int = 1
     conditions: list[Condition] = list(CONDITIONS)
-    episodes: list[str]                           # task_id order; repeats = revisits
+    episodes: list[str]                           # fixed: task_id order, repeats = revisits; progression: task order
+    # U26 progression: each task is retried (a new episode, advisor memory kept) until it succeeds, then the next task
+    # starts; the set ends when every task succeeded or action_budget actions are used (the last attempt gets only
+    # the remaining actions, at most MAX_ACTIONS per attempt).
+    mode: Literal["fixed", "progression"] = "fixed"
+    action_budget: int | None = None
+    parallel_conditions: bool = False             # U26: the conditions' sets run at the same time (own threads)
+    consult_before_experiment: bool = False       # U45: every experiment follows exactly one consultation
+
+    @model_validator(mode="after")
+    def _progression_fields(self) -> "SetPlan":
+        if self.mode == "progression":
+            if not self.action_budget or self.action_budget < 1:
+                raise ValueError("a progression plan needs a positive action_budget")
+            if len(set(self.episodes)) != len(self.episodes):
+                raise ValueError("a progression plan lists each task once, in order")
+        elif self.action_budget is not None:
+            raise ValueError("action_budget applies to progression plans only")
+        return self
 
     def visits(self) -> list[tuple[int, str, int]]:
-        """[(episode_order, task_id, visit_index)] with 1-based order and visit index."""
+        """[(episode_order, task_id, visit_index)] with 1-based order and visit index (fixed plans only: a
+        progression plan's episodes depend on outcomes)."""
+        if self.mode != "fixed":
+            raise ValueError("a progression plan has no fixed episode list")
         seen: dict[str, int] = {}
         out = []
         for i, t in enumerate(self.episodes, start=1):
@@ -162,12 +194,26 @@ class SetPlan(Strict):
 
     @property
     def hash(self) -> str:
-        return payload_hash(self.model_dump(mode="json"))
+        d = self.model_dump(mode="json")
+        if not self.consult_before_experiment:   # U45: plans without the rule keep their earlier hash
+            d.pop("consult_before_experiment")
+        return payload_hash(d)
 
 
 def _load_yaml(path: str | Path) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def load_dotenv(path: str | Path) -> None:
+    """KEY=VALUE lines of the git-ignored .env (README). Never overrides a variable that is already set."""
+    p = Path(path)
+    if not p.is_file():
+        return
+    for line in p.read_text(encoding="utf-8").splitlines():
+        k, sep, v = line.strip().partition("=")
+        if sep and k and not k.startswith("#"):
+            os.environ.setdefault(k.strip(), v.strip())
 
 
 def load_profile(path: str | Path, root: str | Path | None = None) -> Profile:
@@ -194,7 +240,7 @@ def repo_root_for(path: str | Path) -> Path:
 
 # ---------------------------------------------------------------- preflight (T00 §4, B23)
 
-ADVISOR_SHARED_FIELDS = ("provider", "model", "endpoint", "thinking_level", "max_output_tokens")
+ADVISOR_SHARED_FIELDS = ("provider", "model", "endpoint", "thinking_level", "reasoning_effort", "max_output_tokens")
 
 
 def policy_problems(p: Profile) -> list[str]:
@@ -222,14 +268,27 @@ def preflight_problems(p: Profile, env: dict[str, str] | None = None) -> list[st
             out.append("offline_fixture profile must use fixture search")
         return out
     # live_development / evaluation
-    for name in ("researcher", "advisor_baseline", "advisor_product"):
+    for name in AGENT_ROLES:
         r = roles[name]
-        if r["provider"] != "gemini" or r["model"] != SPEC_MODEL or r["thinking_level"] != SPEC_THINKING \
-                or r["endpoint"] != "interactions":
-            out.append(f"roles.{name} must be gemini/{SPEC_MODEL}/interactions/thinking_level={SPEC_THINKING} (spec §10.1)")
+        if not any(all(r[k] == v for k, v in c.items()) for c in APPROVED_AGENT_CONFIGS.values()):
+            out.append(f"roles.{name} must be an approved runtime config: " + "; ".join(
+                f"{d} {'/'.join(map(str, c.values()))}" for d, c in APPROVED_AGENT_CONFIGS.items()))
+        out += [f"roles.{name}.{f} != roles.researcher.{f}: the researcher and both advisors share one runtime "
+                "config (spec §10.1, U10)" for f in ADVISOR_SHARED_FIELDS if r[f] != roles["researcher"][f]]
+    logins: dict[str, str | None] = {}
     for name, r in roles.items():
         if r["provider"] == "fixture":
             out.append(f"roles.{name} uses a fixture provider; not allowed outside offline_fixture")
+        elif r["provider"] in SUBSCRIPTION_CLI:
+            from .providers import claude_cli, codex_cli
+            cli = codex_cli if r["provider"] == "codex" else claude_cli
+            if r["provider"] not in logins:              # local status command, no model call
+                logins[r["provider"]] = cli.cli_problem()
+            if logins[r["provider"]]:
+                out.append(f"roles.{name}: {logins[r['provider']]}")
+            if cli is codex_cli and r["reasoning_effort"] not in (None, *codex_cli.allowed_efforts(name)):
+                out.append(f"roles.{name}: codex reasoning_effort {r['reasoning_effort']!r} exceeds 'medium' (U9; "
+                           "only the researcher and advisors may go higher, U10)")
         elif not env.get(CREDENTIAL_ENV[r["provider"]]):
             out.append(f"roles.{name}: credential {CREDENTIAL_ENV[r['provider']]} is not set")
     if p.search.provider == "fixture":
@@ -246,8 +305,9 @@ def preflight_problems(p: Profile, env: dict[str, str] | None = None) -> list[st
     for name in ("researcher", "advisor_baseline", "advisor_product", "internal_summarizer", "kg_extractor",
                  "leakage_gate", "embedder"):
         m = roles[name]["model"]
-        if m not in caps.prices:
-            out.append(f"cost_caps.prices has no unit price for {m} ({name}); USD cap cannot be guaranteed")
+        if m not in caps.prices:   # subscription CLIs too: priced at 0 on purpose keeps the USD guarantee (I30)
+            hint = " (subscription CLI: price it at 0)" if roles[name]["provider"] in SUBSCRIPTION_CLI else ""
+            out.append(f"cost_caps.prices has no unit price for {m} ({name}){hint}; USD cap cannot be guaranteed")
     if p.execution_mode == "evaluation":
         if p.limits.development_only:
             out.append("limits.development_only=true: freeze limits before evaluation")

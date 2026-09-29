@@ -1,29 +1,39 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-hu-02
-status: draft_unreviewed
+status: reviewed
 domain: hypothesis_update
 counterexample: true
 task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
 history:
 - kind: observation
   id: a001
-  parameters: {cure_temperature: 150.0, cure_time: 60.0}
-  results: {hardness: 3.18}
+  parameters: {cure_temperature: 150.0, cure_time: 30.0}
+  results: {hardness: 2.53}
   note:
-    hypotheses: ['H1: at 150 degC cure_time has no effect on hardness', 'H2: temperature and time trade off (hotter needs
-        shorter)']
+    hypotheses: ['H1: at 150 degC hardness keeps rising with cure_time', 'H2: at 150 degC hardness peaks at an
+        intermediate cure_time']
 - kind: observation
   id: a002
   parameters: {cure_temperature: 150.0, cure_time: 45.0}
   results: {hardness: 85.27}
-remaining_actions: 48
+- kind: observation
+  id: a003
+  parameters: {cure_temperature: 150.0, cure_time: 75.0}
+  results: {hardness: 0.0}
+remaining_actions: 47
 expect:
-  actions: [run_experiment, consult]
+  actions: [run_experiment]
   parameter_checks:
+  - {check: in_range, param: cure_time, max: 75.0, when: {check: in_range, param: cure_temperature, min: 145.0}}
   - {check: not_duplicate}
   grounding:
     must_not_support: [H1]
-rubric: ['Refutes H1: obs:a002 differs strongly from obs:a001 at the same temperature.']
-author_notes: Counterexample to 'time has no effect'.
+rubric: ['Refutes H1 with obs:a003 (hardness fell from 85.27 at 45 min to 0.0 at 75 min) and keeps the next cure_time
+    at or below 75 min instead of curing longer.']
+author_notes: >-
+  Counterexample to 'longer cures keep getting harder' (rebuilt for finding crit-1). The refuted H1 prescribes a cure
+  longer than every one tried (above 75 min); the surviving H2 prescribes an intermediate one. The check rejects only
+  H1's prescription: any temperature is allowed, and so are shorter cures and cooler-and-longer moves up to 75 min
+  (a reasonable ridge guess), so no reasonable updated plan is rejected.

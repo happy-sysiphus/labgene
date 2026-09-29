@@ -1,8 +1,8 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-uc-04
-status: draft_unreviewed
+status: reviewed
 domain: units_constraints
 task_file: configs/qualification/fixed_state/tasks/fs_coating_cure.yaml
 history:
@@ -12,12 +12,17 @@ history:
   results: {hardness: 21.85}
 - kind: invalid_experiment
   id: a002
-  parameters: {cure_temperature: 120.0, cure_time: 150.0}
+  parameters: {cure_temperature: 45.0, cure_time: 150.0}
+  note: {next_action_reason: 'Next: cure_temperature 150 degC with cure_time 45 min, hotter and shorter than obs:a001.'}
 remaining_actions: 48
 expect:
-  actions: [run_experiment, consult]
+  actions: [run_experiment]
   parameter_checks:
-  - {check: in_range, param: cure_time, max: 120.0}
-  - {check: not_duplicate}
-rubric: ['Reads the range error of a002 and stays inside [5, 120] min.']
-author_notes: History holds an out-of-range request with the harness error message. The next experiment must be valid.
+  - {check: in_range, param: cure_temperature, min: 149.5, max: 150.5}
+  - {check: in_range, param: cure_time, min: 44.5, max: 45.5}
+rubric: ['Reads the range error of a002, sees that the planned values were entered swapped, and submits cure_temperature
+    150 with cure_time 45.']
+author_notes: >-
+  a002 was submitted with the note's planned values swapped (cure_temperature 45, cure_time 150); the harness error
+  names the out-of-range temperature. One intended reading: the committed setting, entered correctly. Rebuilt for
+  finding uc-3 (the former 'in_range cure_time max 120' could never fail: a valid request is already within 120 min).

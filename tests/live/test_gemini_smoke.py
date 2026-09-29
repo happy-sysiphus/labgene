@@ -2,7 +2,7 @@
 
 PAID. Skipped unless LABGENE_LIVE=1 AND LABGENE_LIVE_PROFILE=<approved live profile> whose preflight passes
 (finite cost caps + unit prices). Every call goes through call_llm with the profile's CostGuard.
-Run: LABGENE_LIVE=1 LABGENE_LIVE_PROFILE=configs/live.yaml .venv/Scripts/python -m pytest tests/live -q
+Run: LABGENE_LIVE=1 LABGENE_LIVE_PROFILE=configs/live-gemini-smoke.yaml .venv/Scripts/python -m pytest tests/live -q
 """
 import json
 import os
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from labgene.config import load_profile, load_public_task, preflight_problems
+from labgene.config import load_dotenv, load_profile, load_public_task, preflight_problems
 from labgene.contracts import HistoryItem, ProviderStatus, ResearcherView
 from labgene.costs import CallContext, CostGuard
 from labgene.providers.base import GenerationRequest
@@ -23,6 +23,7 @@ if os.environ.get("LABGENE_LIVE") != "1" or not os.environ.get("LABGENE_LIVE_PRO
     pytest.skip("live smoke disabled: set LABGENE_LIVE=1 and LABGENE_LIVE_PROFILE", allow_module_level=True)
 
 ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT / ".env")
 TASK = load_public_task(load_profile(ROOT / "configs/offline.yaml"), "fixture_ridge")
 OBS = [HistoryItem(kind="observation", action_id=f"a{i}", payload={"observation_id": f"o{i}", "parameters": p, "results": r})
        for i, (p, r) in enumerate([({"temperature": 60.0, "time": 20.0}, {"yield": 40.1}),
@@ -42,13 +43,20 @@ class Recording:
 @pytest.fixture(scope="module")
 def live():
     profile = load_profile(os.environ["LABGENE_LIVE_PROFILE"])
+    if profile.roles.researcher.provider != "gemini":
+        pytest.skip("Gemini smoke: the profile's researcher is not on gemini (use configs/live-gemini-smoke.yaml)")
     problems = preflight_problems(profile)
     if problems:
         pytest.fail("profile is not approved for paid calls: " + "; ".join(problems))
     events = []
-    ctx = CallContext(sink=events.append, guard=CostGuard(profile.cost_caps))
+    guard = CostGuard(profile.cost_caps)
+    ctx = CallContext(sink=events.append, guard=guard)
     provider = Recording(build_llm(profile.roles.researcher, timeout_s=profile.limits.provider_timeout_s))
-    return profile, provider, ctx, events
+    yield profile, provider, ctx, events
+    out = ROOT / "artifacts" / "live-smoke"    # measured evidence (git-ignored): one CostEvent per physical attempt
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "events.jsonl").write_text("".join(e.model_dump_json() + "\n" for e in events), encoding="utf-8")
+    (out / "guard.json").write_text(json.dumps(guard.summary(), indent=1), encoding="utf-8")
 
 
 def _req(profile, **kw):

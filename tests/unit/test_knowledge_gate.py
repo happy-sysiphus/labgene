@@ -126,6 +126,13 @@ def test_b11_identity_blocks_publisher_url_variants_of_the_answer_doi():
         assert not identity_blocked(url, ["Some page"], {}, BUNDLES), url
 
 
+def test_b11_pages_under_a_blocked_url_share_its_identity():
+    for url in ["https://fixture.example/papers/ridge-answer/figures/2", "https://www.fixture.example/papers/ridge-answer/"]:
+        assert identity_blocked(url, ["Some page"], {}, BUNDLES), url
+    for url in ["https://fixture.example/papers/ridge-answer-comment", "https://fixture.example/papers"]:
+        assert not identity_blocked(url, ["Some page"], {}, BUNDLES), url   # a sibling or a parent is not
+
+
 def test_b11_corpus_front_matter_is_gated_with_every_chunk_that_exposes_it(tmp_path):
     (tmp_path / "c").mkdir()
     body = "# Notes\nA long paragraph about jacket temperatures and stirring in the batch reactor.\n"

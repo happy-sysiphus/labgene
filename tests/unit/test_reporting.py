@@ -44,11 +44,11 @@ def manifest(plan, mode="offline_fixture", **kw):
 class Ep:
     """Direct ledger writes for one episode (the same calls EpisodeRunner makes)."""
 
-    def __init__(self, L, cond, rep, order, task_id, visit=1):
+    def __init__(self, L, cond, rep, order, task_id, visit=1, budget=50):
         self.L, self.task, self.n = L, TASKS[task_id], 0
         self.scope = RunScope(run_id="run", condition=cond, set_id="smoke", set_rep=rep,
                               episode_id=f"{cond}-r{rep}-e{order:03d}", episode_order=order, task_id=task_id,
-                              visit_index=visit)
+                              visit_index=visit, action_budget=budget)
         self.eid = self.scope.episode_id
         L.start_episode(self.scope, f"start-{self.eid}")
 
@@ -84,8 +84,8 @@ class Ep:
         return self
 
 
-def success(L, cond, rep, order, task_id, visit=1, misses=1):
-    e = Ep(L, cond, rep, order, task_id, visit).consult()
+def success(L, cond, rep, order, task_id, visit=1, misses=1, budget=50):
+    e = Ep(L, cond, rep, order, task_id, visit, budget).consult()
     for _ in range(misses):
         e.run(MISS[task_id])
     return e.run(HIT[task_id]).end(Outcome.success)
@@ -301,6 +301,8 @@ def test_b22_model_check_against_the_configured_model_flags_swaps_and_unverified
         CostEvent(role="leakage_gate", model="fixture-marker-gate", **rt),
         CostEvent(role="researcher_planner", model=G, detail={"model_returned": f"{G}-0925"}, **rt),   # allowed alias
         CostEvent(role="reranker", model="rr", detail={"model_returned": "rr-2"}, **rt),   # role without a config
+        # Codex CLI: the pinned -m is recorded as returned, but the CLI cannot report the model it ran (I25)
+        CostEvent(role="researcher_reviewer", model=G, detail={"model_returned": G, "model_verified": False}, **rt),
     ]:
         L.record_cost(e)
     L.close()
@@ -311,8 +313,9 @@ def test_b22_model_check_against_the_configured_model_flags_swaps_and_unverified
         ("leakage_gate", "gate-model-SWAPPED"): ("fixture-marker-gate", "mismatch"),
         ("leakage_gate", "fixture-marker-gate"): ("fixture-marker-gate", "unverified"),
         ("researcher_planner", G): (G, "ok"),
-        ("reranker", "rr"): (None, "mismatch")}
-    assert (co["model_mismatch_events"], co["model_unverified_events"]) == (2, 1)
+        ("reranker", "rr"): (None, "mismatch"),
+        ("researcher_reviewer", G): (G, "unverified")}
+    assert (co["model_mismatch_events"], co["model_unverified_events"]) == (2, 2)
 
 
 @pytest.mark.parametrize("mode,frozen,complete,extra,label,why", [
@@ -476,3 +479,53 @@ def test_t09_report_after_a_hard_kill_mid_write_shows_the_last_committed_state(t
     assert rep["sets"][0]["complete"] is True and rep["sets"][1]["complete"] is False
     assert rep["costs"]["sources"]["ledger.sqlite"] == 0   # the uncommitted rows were rolled back (in the copy)
     assert [hashlib.sha256(p.read_bytes()).hexdigest() for p in files] == before   # run's files untouched
+
+
+
+# ---------------------------------------------------------------- U26/U27: progression sets
+
+PROG = SetPlan(set_id="smoke", reps=1, episodes=["fixture_ridge", "fixture_catalyst"], mode="progression",
+               action_budget=60)
+
+
+def test_u27_progression_report_tasks_cleared_then_total_actions(tmp_path):
+    L = Ledger(tmp_path)
+    exhausted(L, "baseline", 1, 1, "fixture_ridge")                                    # 50 actions, failed
+    success(L, "baseline", 1, 2, "fixture_ridge", visit=2, budget=10)                  # truncated, 3 actions
+    success(L, "baseline", 1, 3, "fixture_catalyst", budget=7)                         # truncated, 3 actions
+    success(L, "product", 1, 1, "fixture_ridge")
+    success(L, "product", 1, 2, "fixture_catalyst")
+    L.close()
+    rep = build_report(tmp_path, manifest(PROG))
+    sets = {s["condition"]: s for s in rep["sets"]}
+    b, p = sets["baseline"]["progression_set"], sets["product"]["progression_set"]
+    assert (b["tasks_cleared"], b["total_actions"], b["set_end"], b["attempts"], b["truncated_attempts"]) ==         (2, 56, "all_cleared", 3, 2)
+    assert [(t["task_id"], t["attempts"], t["first_attempt_success"], t["actions_to_clear"]) for t in b["per_task"]]         == [("fixture_ridge", 2, False, 53), ("fixture_catalyst", 1, True, 3)]
+    assert (p["tasks_cleared"], p["total_actions"]) == (2, 6) and all(s["complete"] for s in rep["sets"])
+    pc = rep["paired_comparison"]
+    assert pc["kind"] == "progression" and pc["pairs"][0]["better"] == "product"      # tie on tasks, fewer actions
+    assert pc["statement"].startswith("descriptive") and pc["tally"] == {"product": 1, "baseline": 0, "tie": 0}
+    assert [e["action_budget"] for e in rep["episodes"] if e["condition"] == "baseline"] == [50, 10, 7]
+    md = write_report(tmp_path, manifest(PROG))["report.md"].read_text(encoding="utf-8")
+    assert "Progression sets (U26)" in md and "| product | 1 | true | all_cleared | 2/2 | 6 |" in md
+
+
+def test_u27_an_unfinished_progression_set_is_incomplete_and_excluded(tmp_path):
+    L = Ledger(tmp_path)
+    exhausted(L, "baseline", 1, 1, "fixture_ridge")     # 10 actions of budget left, next attempt never started
+    success(L, "product", 1, 1, "fixture_ridge")
+    success(L, "product", 1, 2, "fixture_catalyst")
+    L.close()
+    rep = build_report(tmp_path, manifest(PROG))
+    b = next(s for s in rep["sets"] if s["condition"] == "baseline")
+    assert not b["complete"] and b["progression_set"]["set_end"] == "incomplete"
+    assert rep["paired_comparison"]["n_pairs"] == 0 and rep["paired_comparison"]["n_excluded"] == 1
+
+
+def test_u26_report_refuses_a_ledger_that_breaks_the_progression(tmp_path):
+    L = Ledger(tmp_path)
+    success(L, "baseline", 1, 1, "fixture_ridge")
+    success(L, "baseline", 1, 2, "fixture_ridge", visit=2)          # ridge was already cleared: must be catalyst
+    L.close()
+    with pytest.raises(ValueError, match="does not follow the progression"):
+        build_report(tmp_path, manifest(PROG))

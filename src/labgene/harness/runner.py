@@ -3,7 +3,9 @@ external actions of one episode run strictly one at a time."""
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from typing import Callable, Literal
 
 from .. import faults
@@ -32,13 +34,19 @@ class _Incomplete(Exception):
 class EpisodeRunner:
     def __init__(self, ledger: Ledger, scope: RunScope, task: PublicTask, researcher: Researcher, advisor: Advisor,
                  simulator: SimulatorAdapter, memory: ConditionMemory, limits: Limits, guard: CostGuard | None = None,
-                 state_hash: Callable[[], str] | None = None):
+                 state_hash: Callable[[], str] | None = None, stop: threading.Event | None = None,
+                 hidden_success: list | tuple = ()):
         if task.task_id != scope.task_id:
             raise ValueError(f"task {task.task_id} does not match scope task {scope.task_id}")
+        missing = {h.metric for h in task.hidden_success} - {c.metric for c in hidden_success}
+        if missing:   # U44: a declared hidden criterion without its evaluator threshold could never succeed
+            raise ValueError(f"task {task.task_id}: no evaluator threshold for hidden criteria {sorted(missing)}")
+        self.hidden_success = tuple(hidden_success)   # evaluator-held; never put in a view, error or record
         self.ledger, self.scope, self.task, self.limits, self.guard = ledger, scope, task, limits, guard
         self.researcher, self.advisor, self.simulator, self.memory = researcher, advisor, simulator, memory
         self.eid = scope.episode_id
         self._state_hash = state_hash   # whole condition state (memory + knowledge) when wired; else memory only
+        self.stop = stop                # set by SetRunner on Ctrl+C in a parallel set (checked before each decision)
         self.attempts = range(1, limits.infra_max_action_retries + 2)   # first try + finite retries
 
     def state_hash(self) -> str:
@@ -80,12 +88,14 @@ class EpisodeRunner:
         L, eid = self.ledger, self.eid
         L.set_outcome(eid, Outcome.running)   # also resumes an infra_incomplete checkpoint
         while True:
+            if self.stop is not None and self.stop.is_set():   # leave the episode running: resumable, as Ctrl+C
+                raise KeyboardInterrupt("stop requested")
             st = L.state(eid)
             # success before exhaustion: a 50th-action success is a success. Only this episode's observations count.
             n = L.success_actions(eid)
             if n is not None:
                 return L.set_outcome(eid, Outcome.success, actions_to_success=n)
-            if st.actions_used >= MAX_ACTIONS:
+            if st.actions_used >= self.scope.action_budget:   # 50, or less for a truncated last attempt (U26)
                 return L.set_outcome(eid, Outcome.budget_exhausted)
             if st.protocol_streak >= PROTOCOL_ERROR_LIMIT:
                 return L.set_outcome(eid, Outcome.protocol_error)
@@ -94,8 +104,11 @@ class EpisodeRunner:
                 self._execute(env)
 
     def _view(self, st: EpisodeState) -> ResearcherView:
-        v = ResearcherView(task=self.task, actions_used=st.actions_used, remaining_actions=MAX_ACTIONS - st.actions_used,
-                           history=self.ledger.history(self.eid), notes=self.ledger.notes(self.eid))
+        history = self.ledger.history(self.eid)
+        v = ResearcherView(task=self.task, actions_used=st.actions_used,
+                           remaining_actions=self.scope.action_budget - st.actions_used,
+                           history=history, notes=self.ledger.notes(self.eid),
+                           required_action=required_action(self.scope, history))
         # I7: harness ids embed the condition. The researcher sees "a003" for this episode and "e002:a003" for an
         # earlier one (advisors cite memory ids); memory is per condition/set/rep, so these stay unique.
         s = self.scope
@@ -119,6 +132,9 @@ class EpisodeRunner:
         else:
             try:
                 kind, args = parse_action(d.raw_action_text)
+                if view.required_action and kind.value != view.required_action:
+                    raise ActionParseError("action_not_allowed", "every experiment follows one consultation: the "
+                                                                 f"next action must be {view.required_action}")
             except ActionParseError as e:
                 reason, detail = e.reason, e.detail
         if reason:   # one transaction each, note included: a crash never keeps a decision without its note
@@ -143,7 +159,7 @@ class EpisodeRunner:
         req = ConsultRequest(action_id=env.action_id, scope=self.scope, question=env.args["question"], task=self.task,
                              observations=L.observations(eid), experiment_errors=L.errors(eid),
                              prior_consults=L.consults(eid),
-                             remaining_actions=MAX_ACTIONS - L.state(eid).actions_used - 1)
+                             remaining_actions=self.scope.action_budget - L.state(eid).actions_used - 1)
         ctx = self._ctx(action_id=env.action_id)
         deliver_partial = self.limits.partial_advisor_response == "deliver_marked"
         for attempt in self.attempts:   # same action_id every time; nothing is counted until commit
@@ -174,7 +190,8 @@ class EpisodeRunner:
             return Observation(observation_id=f"obs:{env.action_id}", action_id=env.action_id, scope=self.scope,
                                parameters=v.parameters, results=out.results, units=out.units,
                                simulator_id=out.simulator_id, simulator_version=out.simulator_version,
-                               meets_success_criteria=self.task.is_success(out.results), created_at=now())
+                               meets_success_criteria=self.task.is_success(out.results, self.hidden_success),
+                               created_at=now())
         raise _Incomplete("simulator_infra")
 
     def _finalize(self, st: EpisodeState) -> None:
@@ -214,14 +231,60 @@ class ConditionComponents:
     tasks: dict[str, PublicTask]
     close: Callable[[], None] | None = None     # releases simulators/stores at scope end (memory closed separately)
     state_hash: Callable[[], str] | None = None  # whole condition state hash; default memory.state_hash
+    hidden_success: dict[str, list] = field(default_factory=dict)   # U44: task_id -> evaluator-held thresholds
 
 
 @dataclass(frozen=True)
 class SetRunStatus:
     """What the CLI reports. Anything but 'complete' means the run stopped and can be resumed."""
-    status: Literal["complete", "infra_incomplete", "finalization_failed", "model_changed"]
+    status: Literal["complete", "infra_incomplete", "finalization_failed", "model_changed", "protocol_stalled"]
     episode_id: str | None = None
     reason: str | None = None
+
+
+STALL_LIMIT = 3   # U36
+
+
+def required_action(scope: RunScope, history: list) -> str | None:
+    """U45: with consult_before_experiment, actions alternate consult -> run_experiment (an invalid experiment
+    request takes the experiment's turn). None = the researcher chooses freely."""
+    if not scope.consult_before_experiment:
+        return None
+    acts = [h.kind for h in history if h.kind in ("consult", "observation", "invalid_experiment")]
+    return "run_experiment" if acts and acts[-1] == "consult" else "consult"
+
+
+def same_attempt(stored: RunScope, planned: RunScope) -> bool:
+    """U40: a finished attempt equals the scope a (longer) plan recomputes for it, except that an attempt that ran
+    under a smaller set budget (a truncated last attempt of a shorter plan) keeps the budget it had."""
+    return stored == planned or (stored.action_budget < planned.action_budget and
+                                 stored.model_copy(update={"action_budget": planned.action_budget}) == planned)
+
+
+def progression_replay_problems(L: Ledger, plan: SetPlan, ms: MemoryScope) -> list[str]:
+    """U40: the stored attempts of a set, replayed under `plan` the way SetRunner._run_progression will replay them;
+    a mismatch would stop `resume`, so an extension is refused before it changes anything."""
+    tasks, budget = plan.episodes, plan.action_budget
+    used, order, k, visits = 0, 0, 0, {}
+    while k < len(tasks) and used < budget:
+        order += 1
+        t = tasks[k]
+        visits[t] = visits.get(t, 0) + 1
+        scope = RunScope(**ms.model_dump(), episode_id=f"{ms.condition}-r{ms.set_rep}-e{order:03d}",
+                         episode_order=order, task_id=t, visit_index=visits[t],
+                         action_budget=min(MAX_ACTIONS, budget - used),
+                         consult_before_experiment=plan.consult_before_experiment)
+        st = L.state(scope.episode_id)
+        if st is None:
+            return []                    # the plan continues from here
+        if not same_attempt(st.scope, scope):
+            return [f"{scope.episode_id}: the stored attempt {st.scope.model_dump()} is not what the plan recomputes "
+                    f"({scope.model_dump()})"]
+        if st.outcome not in TERMINAL or st.finalization is not FinalizationStatus.done:
+            return [f"{scope.episode_id} is not finished and saved"]
+        used += st.actions_used
+        k += st.outcome is Outcome.success
+    return []
 
 
 class SetRunner:
@@ -232,42 +295,117 @@ class SetRunner:
                  guard: CostGuard | None = None, revalidated: bool = False):
         self.ledger, self.run_id, self.plan, self.factory, self.limits, self.guard, self.revalidated = \
             ledger, run_id, plan, factory, limits, guard, revalidated
+        self._stop = threading.Event()
 
     def run(self) -> SetRunStatus:
         for rep in range(1, self.plan.reps + 1):
-            for condition in self.plan.conditions:
-                ms = MemoryScope(run_id=self.run_id, condition=condition, set_id=self.plan.set_id, set_rep=rep)
-                # restore the initial snapshot only at a true set start; a resumed set reopens its state
-                c = self.factory(ms, not self.ledger.has_episodes(ms))
-                try:
-                    stop = self._run_set(ms, c)
-                finally:
-                    c.memory.close()
-                    if c.close is not None:
-                        c.close()
-                if stop:
-                    return stop
+            scopes = [MemoryScope(run_id=self.run_id, condition=c, set_id=self.plan.set_id, set_rep=rep)
+                      for c in self.plan.conditions]
+            if self.plan.parallel_conditions:
+                # U26: one thread per condition, each with its own ledger connection (SQLite serialises the writes);
+                # the cost guard is shared and locked. A stop in one condition lets the other finish its set.
+                # Ctrl+C reaches only this thread: it sets self._stop and both workers stop at their next decision.
+                with ThreadPoolExecutor(len(scopes), thread_name_prefix="labgene-cond") as ex:
+                    fs = [ex.submit(self._run_condition_own_ledger, ms) for ms in scopes]
+                    try:
+                        while wait(fs, timeout=1).not_done:   # a timeout keeps Ctrl+C deliverable on Windows
+                            pass
+                    except KeyboardInterrupt:
+                        self._stop.set()
+                        raise
+                    stops = [f.result() for f in fs]
+            else:
+                stops = []
+                for ms in scopes:
+                    stops.append(self._run_condition(ms, self.ledger))
+                    if stops[-1]:
+                        break
+            stop = next((s for s in stops if s), None)
+            if stop:
+                return stop
         return SetRunStatus("complete")
 
-    def _run_set(self, ms: MemoryScope, c: ConditionComponents) -> SetRunStatus | None:
+    def _run_condition_own_ledger(self, ms: MemoryScope) -> SetRunStatus | None:
+        L = Ledger(self.ledger.path.parent)
+        try:
+            return self._run_condition(ms, L)
+        finally:
+            L.close()
+
+    def _run_condition(self, ms: MemoryScope, L: Ledger) -> SetRunStatus | None:
+        # restore the initial snapshot only at a true set start; a resumed set reopens its state
+        c = self.factory(ms, not L.has_episodes(ms))
+        try:
+            return self._run_progression(ms, c, L) if self.plan.mode == "progression" else self._run_fixed(ms, c, L)
+        finally:
+            c.memory.close()
+            if c.close is not None:
+                c.close()
+
+    def _run_fixed(self, ms: MemoryScope, c: ConditionComponents, L: Ledger) -> SetRunStatus | None:
         for order, task_id, visit in self.plan.visits():
             scope = RunScope(**ms.model_dump(), episode_id=f"{ms.condition}-r{ms.set_rep}-e{order:03d}",
-                             episode_order=order, task_id=task_id, visit_index=visit)
-            L, eid = self.ledger, scope.episode_id
-            st = L.state(eid)
-            if st and st.outcome in TERMINAL and st.finalization is FinalizationStatus.done:
-                continue
-            if st and not self.revalidated and "model_changed" in (L.outcome_reason(eid), L.finalization_reason(eid)):
-                return SetRunStatus("model_changed", eid, "revalidation required")   # sticky until revalidated
-            task = c.tasks[task_id]
-            runner = EpisodeRunner(L, scope, task, c.researcher, c.advisor, c.simulators[task.simulator_id],
-                                   c.memory, self.limits, self.guard, state_hash=c.state_hash)
-            try:
-                st = runner.run()
-            except ModelChangedError as e:   # requires revalidation before anything else runs
-                return SetRunStatus("model_changed", eid, str(e))
-            if st.outcome is Outcome.infra_incomplete:
-                return SetRunStatus("infra_incomplete", eid, L.outcome_reason(eid))
-            if st.finalization is not FinalizationStatus.done:   # never start the next episode before the save
-                return SetRunStatus("finalization_failed", eid, L.finalization_reason(eid))
+                             episode_order=order, task_id=task_id, visit_index=visit,
+                             consult_before_experiment=self.plan.consult_before_experiment)
+            stop, _ = self._episode(scope, c, L)
+            if stop:
+                return stop
         return None
+
+    def _run_progression(self, ms: MemoryScope, c: ConditionComponents, L: Ledger) -> SetRunStatus | None:
+        """U26: tasks in plan order. A failed attempt (budget exhausted or protocol error) retries the same task in a
+        new episode (advisor memory kept); a success moves to the next task. The set ends when every task succeeded
+        or plan.action_budget actions are used; each attempt gets min(MAX_ACTIONS, remaining). Every scope follows
+        from the outcomes committed before it, so a resume recomputes exactly the stored scopes.
+        U36: attempts that end in protocol_error without an action use no budget; after every STALL_LIMIT of them in a
+        row on one task this condition stops (protocol_stalled) for inspection; `resume` continues with the next
+        attempt (a replayed stalled attempt never stops the set again)."""
+        tasks, budget = self.plan.episodes, self.plan.action_budget
+        used, order, k, visits, stalled = 0, 0, 0, {}, 0
+        while k < len(tasks) and used < budget:
+            order += 1
+            t = tasks[k]
+            visits[t] = visits.get(t, 0) + 1
+            scope = RunScope(**ms.model_dump(), episode_id=f"{ms.condition}-r{ms.set_rep}-e{order:03d}",
+                             episode_order=order, task_id=t, visit_index=visits[t],
+                             action_budget=min(MAX_ACTIONS, budget - used),
+                             consult_before_experiment=self.plan.consult_before_experiment)
+            prior = L.state(scope.episode_id)
+            replayed = prior is not None and prior.outcome in TERMINAL and prior.finalization is FinalizationStatus.done
+            if replayed and prior.scope != scope and same_attempt(prior.scope, scope):
+                scope = prior.scope        # U40: a finished attempt keeps the (truncated) budget it ran with
+            stop, st = self._episode(scope, c, L)
+            if stop:
+                return stop
+            used += st.actions_used
+            k += st.outcome is Outcome.success
+            stalled = stalled + 1 if st.outcome is Outcome.protocol_error and st.actions_used == 0 else 0
+            if stalled and stalled % STALL_LIMIT == 0 and not replayed:
+                return SetRunStatus("protocol_stalled", scope.episode_id,
+                                    f"{stalled} attempts in a row at {t} ended in protocol errors without an action")
+        return None
+
+    def _episode(self, scope: RunScope, c: ConditionComponents,
+                 L: Ledger) -> tuple[SetRunStatus | None, EpisodeState | None]:
+        """Run (or skip, if already terminal and saved) one episode: (stop status, final state)."""
+        eid = scope.episode_id
+        st = L.state(eid)
+        if st is not None and st.scope != scope:
+            raise ValueError(f"ledger episode {eid} does not match the set plan ({st.scope} != {scope})")
+        if st and st.outcome in TERMINAL and st.finalization is FinalizationStatus.done:
+            return None, st
+        if st and not self.revalidated and "model_changed" in (L.outcome_reason(eid), L.finalization_reason(eid)):
+            return SetRunStatus("model_changed", eid, "revalidation required"), None   # sticky until revalidated
+        task = c.tasks[scope.task_id]
+        runner = EpisodeRunner(L, scope, task, c.researcher, c.advisor, c.simulators[task.simulator_id],
+                               c.memory, self.limits, self.guard, state_hash=c.state_hash, stop=self._stop,
+                               hidden_success=c.hidden_success.get(task.task_id, ()))
+        try:
+            st = runner.run()
+        except ModelChangedError as e:   # requires revalidation before anything else runs
+            return SetRunStatus("model_changed", eid, str(e)), None
+        if st.outcome is Outcome.infra_incomplete:
+            return SetRunStatus("infra_incomplete", eid, L.outcome_reason(eid)), None
+        if st.finalization is not FinalizationStatus.done:   # never start the next episode before the save
+            return SetRunStatus("finalization_failed", eid, L.finalization_reason(eid)), None
+        return None, st

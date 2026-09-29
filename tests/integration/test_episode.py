@@ -348,3 +348,65 @@ def test_b09_new_episode_starts_with_empty_researcher_state(tmp_path):
     assert (v.actions_used, v.remaining_actions, v.history, v.notes) == (0, 50, [], [])
     assert v == r1.researcher.views[0]
     assert r2.advisor.requests[0].observations == [] and r2.advisor.requests[0].prior_consults == []
+
+
+def test_u44_hidden_criteria_decide_success_and_their_numbers_never_reach_a_view(tmp_path):
+    from labgene.contracts import PublicTask, SuccessCriterion
+    m = RIDGE.success[0].metric
+    hit_value = CountingSim().evaluate({"temperature": 83, "time": 37}).results[m]
+    task = PublicTask.model_validate({**RIDGE.model_dump(mode="json"), "hidden_success": [
+        {"metric": m, "direction": "maximize", "rule": "within 2 % of the best value this model reaches"}]})
+    sc = scope()
+    with pytest.raises(ValueError, match="no evaluator threshold"):
+        EpisodeRunner(Ledger(tmp_path / "a"), sc, task, FakeResearcher(POLICY), FakeAdvisor(), CountingSim(),
+                      FakeMemory(sc.memory_scope), LIMITS)
+    secret = round(hit_value + 0.123456, 6)                  # above what HIT reaches: never met
+    blocked = FakeResearcher(lambda v: HIT)
+    st = EpisodeRunner(Ledger(tmp_path / "b"), sc, task, blocked, FakeAdvisor(), CountingSim(),
+                       FakeMemory(sc.memory_scope), LIMITS,
+                       hidden_success=[SuccessCriterion(metric=m, direction="maximize", target=secret,
+                                                        tolerance=0)]).run()
+    assert st.outcome is Outcome.budget_exhausted            # the public rule alone would have succeeded at once
+    assert str(secret) not in json.dumps([v.model_dump(mode="json") for v in blocked.views])
+    assert "within 2 %" in json.dumps(blocked.views[0].model_dump(mode="json"))   # the rule itself is public
+    st = EpisodeRunner(Ledger(tmp_path / "c"), sc, task, FakeResearcher(lambda v: HIT), FakeAdvisor(), CountingSim(),
+                       FakeMemory(sc.memory_scope), LIMITS,
+                       hidden_success=[SuccessCriterion(metric=m, direction="maximize", target=hit_value - 1,
+                                                        tolerance=0)]).run()
+    assert st.outcome is Outcome.success and st.actions_used == 1
+
+
+def test_u44_preflight_refuses_a_hidden_criterion_without_its_threshold(tmp_path):
+    import shutil
+    import yaml
+    from labgene.app import run_preflight
+    from labgene.config import SetPlan
+    tasks, private = tmp_path / "tasks", tmp_path / "private"
+    shutil.copytree(ROOT / "configs/tasks", tasks)
+    shutil.copytree(ROOT / "tests/fixtures/private", private)
+    d = yaml.safe_load((tasks / "fixture_ridge.yaml").read_text(encoding="utf-8"))
+    d["hidden_success"] = [{"metric": RIDGE.success[0].metric, "direction": "maximize", "rule": "near the best"}]
+    (tasks / "fixture_ridge.yaml").write_text(yaml.safe_dump(d), encoding="utf-8")
+    p = PROFILE.model_copy(update={"paths": PROFILE.paths.model_copy(update={"tasks_dir": str(tasks),
+                                                                              "private_dir": str(private)})})
+    plan = SetPlan(set_id="s", episodes=["fixture_ridge"])
+    assert any("no evaluator threshold" in x for x in run_preflight(p, plan))
+
+
+def test_u45_every_experiment_follows_one_consultation_and_both_count(tmp_path):
+    from labgene.researcher.agent import SYSTEMS, action_schema
+    assert "consult_before_experiment" not in scope().model_dump_json()   # earlier scopes keep their exact JSON
+    sc = scope().model_copy(update={"consult_before_experiment": True})
+    script = iter([MISS, ask(), ask(), MISS, ask(), HIT])   # an experiment first and a second consult are refused
+    r = make(tmp_path, lambda v: next(script), sc=sc)
+    st = r.run()
+    assert st.outcome is Outcome.success and st.actions_used == 4 and st.actions_to_success == 4
+    assert [v.required_action for v in r.researcher.views] == ["consult", "consult", "run_experiment",
+                                                               "run_experiment", "consult", "run_experiment"]
+    assert [row[0] for row in r.ledger.db.execute("SELECT reason FROM protocol_events")] == ["action_not_allowed"] * 2
+    assert len(r.advisor.requests) == 2 and r.advisor.requests[0].remaining_actions == 49
+    assert "required_action" in SYSTEMS[True][2] and "required_action" not in SYSTEMS[False][2]
+    assert action_schema(RIDGE, "consult")["properties"]["action"]["enum"] == ["consult"]
+    free = make(tmp_path / "free", POLICY)
+    assert free.run().outcome is Outcome.success
+    assert all("required_action" not in v.model_dump(mode="json") for v in free.researcher.views)

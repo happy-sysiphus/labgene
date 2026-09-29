@@ -1,12 +1,22 @@
 """Cost accounting and caps (§8.2, plan T07). Every physical operation is a CostEvent."""
 from __future__ import annotations
 
+import functools
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
 from .config import CostCaps
 from .contracts import CostEvent, CostSink, Usage
+
+
+def _locked(fn):
+    @functools.wraps(fn)
+    def w(self, *a, **k):
+        with self._lock:
+            return fn(self, *a, **k)
+    return w
 
 
 class CapExceeded(Exception):
@@ -26,7 +36,8 @@ class CostGuard:
     """Reserve worst-case usage before each call, settle with actual usage after.
     Unknown usage keeps the reservation (conservative). Unknown prices -> usd_guaranteed=False.
     on_change(totals) persists cumulative totals after every reserve/settle; open reservations are counted as spent
-    there, so a hard kill mid-call can only over-count on resume (never under-count)."""
+    there, so a hard kill mid-call can only over-count on resume (never under-count). Thread-safe: the conditions of a
+    set may run in parallel (U26) against one guard."""
     caps: CostCaps
     enforce: bool = True
     calls: int = 0
@@ -39,6 +50,7 @@ class CostGuard:
     on_change: Callable[[dict[str, Any]], None] | None = None
     _started: float = field(default_factory=time.monotonic)
     _open: list[Reservation] = field(default_factory=list)
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
     def _usd(self, model: str, inp: int, out: int) -> float | None:
         p = self.caps.prices.get(model)
@@ -47,6 +59,7 @@ class CostGuard:
     def wall_s(self) -> float:
         return self.prior_wall_s + time.monotonic() - self._started
 
+    @_locked
     def reserve(self, model: str, est_input_tokens: int, max_output_tokens: int) -> Reservation:
         usd = self._usd(model, est_input_tokens, max_output_tokens)
         if usd is None:
@@ -71,6 +84,7 @@ class CostGuard:
         self._persist()
         return r
 
+    @_locked
     def reserve_search(self) -> None:
         """One paid search/fetch request (no token usage). Checked before the request."""
         if self.enforce and self.caps.max_search_calls is not None and self.search_calls + 1 > self.caps.max_search_calls:
@@ -79,6 +93,7 @@ class CostGuard:
         self.search_calls += 1
         self._persist()
 
+    @_locked
     def totals(self) -> dict[str, Any]:
         """Cumulative spend with open reservations counted as spent (what a resume must assume)."""
         return {"calls": self.calls + len(self._open),
@@ -87,6 +102,7 @@ class CostGuard:
                 "usd": self.usd + sum(x.usd or 0.0 for x in self._open), "search_calls": self.search_calls,
                 "wall_s": self.wall_s(), "usd_guaranteed": self.usd_guaranteed}
 
+    @_locked
     def restore(self, t: dict[str, Any]) -> None:
         self.calls, self.input_tokens, self.output_tokens = t["calls"], t["input_tokens"], t["output_tokens"]
         self.usd, self.search_calls, self.prior_wall_s = t["usd"], t.get("search_calls", 0), t["wall_s"]
@@ -97,6 +113,7 @@ class CostGuard:
         if self.on_change is not None:
             self.on_change(self.totals())
 
+    @_locked
     def settle(self, r: Reservation, usage: Usage) -> None:
         self._open.remove(r)
         inp = usage.input_tokens if usage.input_tokens is not None else r.input_tokens
@@ -109,6 +126,7 @@ class CostGuard:
         self.usd += usd or 0.0
         self._persist()
 
+    @_locked
     def summary(self) -> dict[str, Any]:
         return {"calls": self.calls, "input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
                 "usd": round(self.usd, 6), "usd_guaranteed": self.usd_guaranteed, "search_calls": self.search_calls,

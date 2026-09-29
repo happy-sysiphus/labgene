@@ -99,7 +99,7 @@ class Ledger:
         run_dir = Path(run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
         self.path = run_dir / "ledger.sqlite"
-        self.db = sqlite3.connect(self.path, isolation_level=None)
+        self.db = sqlite3.connect(self.path, isolation_level=None, timeout=60)   # U26: two condition threads
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         if self._one("PRAGMA foreign_keys") != 1:
@@ -228,8 +228,8 @@ class Ledger:
             if old is None:
                 n, pending = self.db.execute("SELECT COUNT(*), SUM(status='reserved')"
                                              " FROM actions WHERE episode_id=?", (eid,)).fetchone()
-                if n >= MAX_ACTIONS:
-                    raise LedgerError(f"{eid}: action budget of {MAX_ACTIONS} is used up")
+                if n >= env.scope.action_budget:
+                    raise LedgerError(f"{eid}: action budget of {env.scope.action_budget} is used up")
                 if pending:
                     raise LedgerError(f"{eid}: another action is still pending")
                 self.db.execute("INSERT INTO actions(action_id, episode_id, seq, decision_index, kind, raw_text,"

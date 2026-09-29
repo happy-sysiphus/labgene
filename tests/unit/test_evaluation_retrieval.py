@@ -211,3 +211,13 @@ def test_b16_answer_dev_reports_mechanical_and_semantic_separately():
     assert not r["mechanical"]["ok"] and len(r["mechanical"]["issues"]) == 2   # undelivered source + misquote
     assert r["semantic"]["ok"] is None                                  # the cited source was never delivered
     assert evaluate_answer(resp, delivered, obs, task, UnavailableJudge())["semantic"]["ok"] is None
+
+
+
+def test_u31_the_chosen_config_must_reach_the_recall_bar():
+    from labgene.evaluation.retrieval_validation import AdoptionRule, adopt
+    rule = AdoptionRule(primary="recall_at_k", tie_break=["mrr"], cost_rank={"a": 0, "b": 1}, min_recall_at_k=0.8)
+    res = {"a": {"recall_at_k": 0.75, "mrr": 0.5}, "b": {"recall_at_k": 0.7, "mrr": 0.9}}
+    assert adopt(res, rule) == {"chosen": "a", "complete": True, "not_run": [], "min_recall_at_k": 0.8, "meets_bar": False}
+    res["b"]["recall_at_k"] = 0.85
+    assert adopt(res, rule)["chosen"] == "b" and adopt(res, rule)["meets_bar"] is True

@@ -1,30 +1,37 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-hu-03
-status: draft_unreviewed
+status: reviewed
 domain: hypothesis_update
 counterexample: true
 task_file: configs/qualification/fixed_state/tasks/fs_flow_selectivity.yaml
 history:
 - kind: observation
   id: a001
-  parameters: {temperature: 70.0, residence_time: 20.0, solvent: MeCN}
-  results: {conversion: 88.46, selectivity: 82.8}
+  parameters: {temperature: 60.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 79.81, selectivity: 90.34}
   note:
-    hypotheses: ['H1: toluene gives higher selectivity than MeCN at the same temperature and residence time', 'H2: MeCN
-        balances conversion and selectivity best']
+    hypotheses: ['H1: at 20 min in MeCN, raising the temperature raises conversion while selectivity stays above its
+        target', 'H2: selectivity falls as the temperature rises, so the missing conversion has to come from a longer
+        residence time at a lower temperature']
 - kind: observation
   id: a002
-  parameters: {temperature: 70.0, residence_time: 20.0, solvent: toluene}
-  results: {conversion: 94.58, selectivity: 75.8}
+  parameters: {temperature: 70.0, residence_time: 20.0, solvent: MeCN}
+  results: {conversion: 88.46, selectivity: 82.8}
 remaining_actions: 48
 expect:
-  actions: [run_experiment, consult]
+  actions: [run_experiment]
   parameter_checks:
+  - {check: in_range, param: temperature, max: 70.0, when: {check: one_of, param: solvent, values: [MeCN]}}
   - {check: not_duplicate}
   grounding:
     must_not_support: [H1]
-rubric: ['Refutes H1: toluene raised conversion but lowered selectivity (obs:a002 vs obs:a001).']
-author_notes: 'Counterexample to the solvent hypothesis. Toluene is not excluded as a solvent: it can still succeed at
-  lower temperature.'
+rubric: ['Refutes H1 with obs:a002 (selectivity fell to 82.8, below its target, while conversion rose to 88.46) and
+    lowers the temperature instead of heating further.']
+author_notes: >-
+  Counterexample to 'heat buys conversion for free' (rebuilt for finding crit-1). The refuted H1 prescribes a
+  temperature above 70 degC (heat further for the missing conversion); the surviving H2 prescribes a lower
+  temperature with a longer residence time. H1 was stated for MeCN, so the check rejects only temperatures above
+  70 degC in MeCN (repeating obs:a002 is rejected by not_duplicate); residence time and other solvents are free.
+  Success exists below 70 degC in MeCN (e.g. 65 degC, 28 min).

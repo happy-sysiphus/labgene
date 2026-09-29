@@ -1,0 +1,78 @@
+# Domain ontology profile for KG linking on the Suzuki flow tasks (Pd-catalysed Suzuki-Miyaura coupling of heteroaryl
+# halides with a 2-aminobiphenyl palladacycle precatalyst, DBU, THF/water, continuous flow). Generic domain vocabulary
+# only: no answer facts (no optimal catalyst, condition or result).
+# verified: true = the id and label were checked against the registry on 2026-09-29:
+#   ChEBI, RXNO, REX, MOP via the EBI OLS4 API (https://www.ebi.ac.uk/ols4/api/...), not obsolete;
+#   QUDT via https://qudt.org/vocab/{unit,quantitykind}/<id> (HTTP 200 with the expected rdfs:label; unknown ids 404).
+# Labels are the registry labels; common names are synonyms. verified: false = no registry id was found (checked in
+# ChEBI: 3-bromoquinoline, 3-chloropyridine, the three boron reagents, DBU, PCy3, PtBu3, protodeboronation, flow reactor)
+# or an application term of the LabGene schema (lg:).
+profile_id: suzuki-flow-v1
+development_only: false
+terms:
+  # QUDT quantity kinds / units
+  - {id: "quantitykind:Temperature", label: temperature, synonyms: [reaction temperature, reactor temperature], source: QUDT, verified: true}
+  - {id: "quantitykind:Time", label: time, synonyms: [reaction time], source: QUDT, verified: true}
+  - {id: "unit:DEG_C", label: degC, synonyms: ["°C", degree Celsius, degrees Celsius], source: QUDT, kind: unit, verified: true}
+  - {id: "unit:SEC", label: s, synonyms: [second, seconds, sec], source: QUDT, kind: unit, verified: true}
+  - {id: "unit:MIN", label: min, synonyms: [minute, minutes], source: QUDT, kind: unit, verified: true}
+  - {id: "unit:PERCENT", label: "%", synonyms: [percent], source: QUDT, kind: unit, verified: true}
+  - {id: "lg:unit_mol_percent", label: mol%, synonyms: [mol %, mole percent], source: labgene, kind: unit, verified: false}
+  # ChEBI entities and roles
+  - {id: "CHEBI:33363", label: palladium atom, synonyms: [palladium, Pd], source: ChEBI, verified: true}
+  - {id: "CHEBI:38269", label: boronic acids, synonyms: [boronic acid, arylboronic acid, arylboronic acids, heteroarylboronic acid, heteroarylboronic acids], source: ChEBI, verified: true}
+  - {id: "CHEBI:50979", label: boronate ester, synonyms: [boronate esters, boronic ester, boronic esters], source: ChEBI, verified: true}
+  - {id: "CHEBI:38278", label: organoboron compound, synonyms: [organoboron compounds, organoboron reagent, organoborane, organoboranes], source: ChEBI, verified: true}
+  - {id: "CHEBI:50887", label: haloarene, synonyms: [aryl halide, aryl halides, haloarenes, heteroaryl halide, heteroaryl halides], source: ChEBI, verified: true}
+  - {id: "CHEBI:36686", label: chloroarene, synonyms: [aryl chloride, aryl chlorides, chloroarenes, heteroaryl chloride, heteroaryl chlorides], source: ChEBI, verified: true}
+  - {id: "CHEBI:37148", label: bromoarene, synonyms: [aryl bromide, aryl bromides, bromoarenes, heteroaryl bromide, heteroaryl bromides], source: ChEBI, verified: true}
+  - {id: "CHEBI:39174", label: 2-chloropyridine, synonyms: [o-chloropyridine, alpha-chloropyridine], source: ChEBI, verified: true}
+  - {id: "CHEBI:26911", label: oxolane, synonyms: [THF, tetrahydrofuran], source: ChEBI, verified: true}
+  - {id: "CHEBI:15377", label: water, synonyms: [H2O], source: ChEBI, verified: true}
+  - {id: "CHEBI:22695", label: base, synonyms: [bases], source: ChEBI, verified: true}
+  - {id: "CHEBI:52214", label: ligand, synonyms: [ligands, supporting ligand, supporting ligands], source: ChEBI, verified: true}
+  - {id: "CHEBI:35223", label: catalyst, synonyms: [catalysts], source: ChEBI, verified: true}
+  - {id: "CHEBI:46787", label: solvent, synonyms: [solvents], source: ChEBI, verified: true}
+  - {id: "CHEBI:183318", label: triphenylphosphine, synonyms: [PPh3, Ph3P, triphenyl phosphine], source: ChEBI, verified: true}
+  - {id: "CHEBI:25224", label: methanesulfonate, synonyms: [mesylate, OMs], source: ChEBI, verified: true}
+  # substrates and reagents without a ChEBI entry
+  - {id: "lg:3_bromoquinoline", label: 3-bromoquinoline, source: labgene, verified: false}
+  - {id: "lg:3_chloropyridine", label: 3-chloropyridine, synonyms: [m-chloropyridine], source: labgene, verified: false}
+  - {id: "lg:dimethylisoxazole_bpin", label: "3,5-dimethylisoxazole-4-boronic acid pinacol ester", synonyms: ["(3,5-dimethylisoxazol-4-yl)boronic acid pinacol ester", "3,5-dimethylisoxazole-4-Bpin"], source: labgene, verified: false}
+  - {id: "lg:benzofuran_2_boronic_acid", label: benzofuran-2-boronic acid, synonyms: [benzofuran-2-ylboronic acid, 2-benzofuranylboronic acid], source: labgene, verified: false}
+  - {id: "lg:n_boc_pyrrole_2_boronic_acid", label: N-Boc-pyrrole-2-boronic acid, synonyms: [1-Boc-2-pyrroleboronic acid, N-Boc-2-pyrroleboronic acid], source: labgene, verified: false}
+  - {id: "lg:pinacol_boronate", label: pinacol boronate, synonyms: [pinacol ester, boronic acid pinacol ester, pinacol boronic ester, Bpin], source: labgene, verified: false}
+  - {id: "lg:dbu", label: DBU, synonyms: ["1,8-diazabicyclo[5.4.0]undec-7-ene"], source: labgene, verified: false}
+  # reactions and processes
+  - {id: "RXNO:0000140", label: Suzuki-Miyaura coupling, synonyms: [Suzuki–Miyaura coupling, Suzuki coupling, Suzuki reaction, Suzuki cross-coupling, Suzuki-Miyaura cross-coupling, Suzuki–Miyaura cross-coupling, SMC, SMCC], source: RXNO, verified: true}
+  - {id: "RXNO:0000603", label: cross-coupling, synonyms: [cross coupling, cross-coupling reaction, cross-coupling reactions], source: RXNO, verified: true}
+  - {id: "RXNO:0000039", label: carbon-carbon homocoupling reaction, synonyms: [homocoupling], source: RXNO, verified: true}
+  - {id: "REX:0000435", label: oxidative addition, source: REX, verified: true}
+  - {id: "MOP:0000677", label: transmetallation, synonyms: [transmetalation], source: MOP, verified: true}
+  - {id: "REX:0000436", label: reductive elimination, source: REX, verified: true}
+  - {id: "lg:protodeboronation", label: protodeboronation, synonyms: [protodeborylation], source: labgene, verified: false}
+  - {id: "lg:flow_reactor", label: flow reactor, synonyms: [continuous-flow reactor, continuous flow reactor, tubular reactor, droplet flow reactor], source: labgene, verified: false}
+  # LabGene application terms
+  - {id: "lg:reaction_yield", label: yield, synonyms: [reaction yield, product yield], source: labgene, verified: false}
+  - {id: "lg:turnover_number", label: TON, synonyms: [turnover number], source: labgene, verified: false}
+  - {id: "lg:catalyst_loading", label: catalyst loading, synonyms: [loading, Pd loading, precatalyst loading], source: labgene, verified: false}
+  - {id: "lg:residence_time", label: residence time, synonyms: [residence_time, t_res], source: labgene, verified: false}
+  - {id: "lg:conversion", label: conversion, source: labgene, verified: false}
+  - {id: "lg:precatalyst", label: precatalyst, synonyms: [precatalysts, pre-catalyst], source: labgene, verified: false}
+  - {id: "lg:palladacycle_precatalyst", label: palladacycle precatalyst, synonyms: [2-aminobiphenyl palladacycle, Buchwald precatalyst, Buchwald palladacycle, palladacycle], source: labgene, verified: false}
+  - {id: "lg:precatalyst_g2", label: G2 precatalyst, synonyms: [G2, Pd G2, Gen 2, second-generation precatalyst, chloride palladacycle], source: labgene, verified: false}
+  - {id: "lg:precatalyst_g3", label: G3 precatalyst, synonyms: [G3, Pd G3, Gen 3, third-generation precatalyst, mesylate palladacycle], source: labgene, verified: false}
+  - {id: "lg:dialkylbiaryl_phosphine", label: dialkylbiaryl phosphine, synonyms: [dialkylbiarylphosphine, dialkylbiaryl phosphines, dialkylbiarylphosphines, Buchwald ligand, Buchwald ligands], source: labgene, verified: false}
+  - {id: "lg:xphos", label: XPhos, synonyms: ["2-dicyclohexylphosphino-2',4',6'-triisopropylbiphenyl"], source: labgene, verified: false}
+  - {id: "lg:sphos", label: SPhos, synonyms: ["2-dicyclohexylphosphino-2',6'-dimethoxybiphenyl"], source: labgene, verified: false}
+  - {id: "lg:ruphos", label: RuPhos, synonyms: ["2-dicyclohexylphosphino-2',6'-diisopropoxybiphenyl"], source: labgene, verified: false}
+  - {id: "lg:xantphos", label: Xantphos, synonyms: ["4,5-bis(diphenylphosphino)-9,9-dimethylxanthene"], source: labgene, verified: false}
+  - {id: "lg:pcy3", label: PCy3, synonyms: [PCy 3, tricyclohexylphosphine, Cy3P], source: labgene, verified: false}
+  - {id: "lg:ptbu3", label: PtBu3, synonyms: [P(t-Bu)3, "P( t -Bu) 3", tri-tert-butylphosphine, tBu3P], source: labgene, verified: false}
+  # predicates
+  - {id: "lg:increases", label: increases, synonyms: [raises, improves, enhances, accelerates], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:decreases", label: decreases, synonyms: [lowers, reduces, slows], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:requires", label: requires, synonyms: [needs, depends on], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:promotes", label: promotes, synonyms: [facilitates, favors, favours], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:inhibits", label: inhibits, synonyms: [suppresses, poisons, deactivates], source: labgene, kind: predicate, verified: false}
+  - {id: "lg:competes_with", label: competes with, synonyms: [competes_with, competing with], source: labgene, kind: predicate, verified: false}

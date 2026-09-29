@@ -75,7 +75,7 @@ class OtherModel(FixtureProvider):
         return super().generate(req).model_copy(update={"model_returned": "some-other-model"})
 
 
-def make(tmp_path, cond, policy=None, *, limits=LIM, provider=None, web=None, embedder=None):
+def make(tmp_path, cond, policy=None, *, limits=LIM, provider=None, web=None, embedder=None, role=None):
     """One condition's state dir (knowledge + memory), advisor and captured provider."""
     d = tmp_path / cond
     quiet = CallContext(sink=lambda e: None)
@@ -92,7 +92,7 @@ def make(tmp_path, cond, policy=None, *, limits=LIM, provider=None, web=None, em
                          max_chars=limits.max_tool_response_chars)
     provider = provider or FixtureProvider(policy=policy or make_fixture_advisor_policy(cond))
     ms = MemoryScope(run_id="r", condition=cond, set_id="smoke", set_rep=1)
-    role = PROFILE.roles.advisor_product if cond == "product" else PROFILE.roles.advisor_baseline
+    role = role or (PROFILE.roles.advisor_product if cond == "product" else PROFILE.roles.advisor_baseline)
     if cond == "product":
         memory = ProductMemory(d, ms, tasks=TASKS, limits=limits)
         advisor = ProductAdvisor(provider, role, limits, memory=memory, store=store, search=search, ontology=ONTO,
@@ -430,3 +430,41 @@ def test_b17_product_query_expansion_is_bounded_by_max_query_expansions(tmp_path
         consult(e, request(scope("product"), question=q))
         [d] = [ev.detail for ev in e.events if ev.kind == "retrieval"]
         assert d["expanded"] is (n > 0) and d["rankings"] == rankings
+
+
+# ---------------------------------------------------------------- U10: both advisors on the Codex CLI (I27)
+
+@pytest.mark.parametrize("cond", ["baseline", "product"])
+def test_u10_both_advisors_consult_through_codex_resending_history_and_repairing(tmp_path, cond, codex_script):
+    from conftest import codex_config
+    from labgene.config import RoleModel
+    from labgene.providers.codex_cli import NO_TOOLS, CodexExecProvider
+    s = scope(cond)
+    o1 = obs(s, 1, 61.25, 20.0, 87.123)
+    answer = {"answer": f"In {o1.observation_id} the yield was 87.123 %.", "cited_observation_ids": [o1.observation_id],
+              "reasoning": "r", "limitations": "l"}
+    run, calls = codex_script(
+        json.dumps({"text": "", "tool_calls": [{"name": "search", "arguments_json": json.dumps(
+            {"query": "Arrhenius rate constant temperature"})}]}),
+        json.dumps({"text": json.dumps({**answer, "cited_source_ids": ["web:not-delivered"], "candidates": []}),
+                    "tool_calls": []}),
+        json.dumps({**answer, "cited_source_ids": [], "candidates": [{"parameters": {"temperature": 70.0, "time": 25.0},
+                                                                      "rationale": None}]}))
+    u10 = RoleModel(provider="codex", model="gpt-6-luna", endpoint="codex_exec", reasoning_effort="max",
+                    max_output_tokens=65536)
+    e = make(tmp_path, cond, provider=CodexExecProvider(runner=run), role=u10)
+    out = consult(e, request(s, [o1]))
+    assert out.status == "ok" and out.response.validation_issues == []
+    [c] = out.response.candidates                          # the null rationale was an omitted optional field
+    assert c.parameters == {"temperature": 70.0, "time": 25.0} and c.rationale == "" and c.revisit == "new"
+    first, answer_round, repair = calls
+    assert first["schema"]["properties"]["tool_calls"]["items"]["properties"]["name"]["enum"] == ["search", "open"]
+    assert json.loads(first["stdin"])["question"] == Q
+    turns = json.loads(answer_round["stdin"])["conversation"]            # stateless: the consultation is resent
+    assert [t["role"] for t in turns] == ["user", "model", "tool"] and turns[2]["result"]["results"]
+    assert repair["instructions"].endswith(NO_TOOLS)
+    assert repair["schema"]["properties"]["candidates"]["items"]["properties"]["rationale"]["anyOf"][1] ==         {"type": "null"}                                   # strict answer schema: optional rationale is nullable
+    last = json.loads(repair["stdin"])["conversation"][-1]
+    assert last["role"] == "user" and "web:not-delivered" in json.loads(last["text"])["repair"]["issues"][0]
+    assert all(x["cwd_empty"] and codex_config(x["args"], "model_reasoning_effort") == '"max"' for x in calls)
+    assert {ev.detail["billing"] for ev in e.events if ev.kind == "llm_call"} == {"subscription"}

@@ -17,4 +17,8 @@ eval/transcripts/
 .env.*
 !.env.example
 .review_scratch/
-configs/live.yaml
+configs/live*.yaml
+!configs/live.example.yaml
+/data/corpus/
+# excerpts of the corpus sources (same licence limits)
+/data/baseline_initial_text.md

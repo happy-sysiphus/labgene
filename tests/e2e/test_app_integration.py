@@ -151,3 +151,114 @@ def test_cli_exit_codes_for_refused_inputs(tmp_path):
     assert run_cli("run-set", "--profile", prof, "--plan", plan, "--run-id", "dup") == 0
     assert run_cli("run-set", "--profile", prof, "--plan", plan, "--run-id", "dup") == 2   # existing run: use resume
     assert run_cli("resume", "--run-id", "nope", "--artifacts-dir", str(tmp_path / "artifacts")) == 2
+
+
+def test_u39_regate_then_import_runs_on_the_same_pinned_initial_state(tmp_path):
+    prof, plan = files(tmp_path)                                    # main-like plan: ridge + catalyst bundles, set "it"
+    pilot = tmp_path / "pilot.yaml"
+    pilot.write_text(yaml.safe_dump({"set_id": "pilot", "conditions": ["baseline", "product"],
+                                     "episodes": ["fixture_ridge"]}), encoding="utf-8")
+    art = tmp_path / "artifacts"
+    assert run_cli("build-corpus", "--profile", prof, "--plan", str(pilot), "--run-id", "src") == 0
+    assert run_cli("regate-state", "--profile", prof, "--plan", plan, "--run-id", "state", "--from-run", "src") == 0
+    rep = json.loads((art / "state" / "build" / "product.regate.json").read_text(encoding="utf-8"))
+    assert rep["set_scope"] == "it" and len(rep["answer_bundle_versions"]) == 2 and rep["source_run"] == "src"
+    pinned = {c: json.loads((art / "state" / "initial" / c / "manifest.json").read_text(encoding="utf-8"))
+              ["combined_sha256"] for c in ("baseline", "product")}
+    doc = yaml.safe_load(Path(prof).read_text(encoding="utf-8"))
+    doc["knowledge"]["initial_state_from"] = str(art / "state")
+    imp = tmp_path / "import.yaml"
+    imp.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    p, pl = load_profile(imp), load_set_plan(plan)
+    assert freeze_digest(p, pl, load_tasks(p, pl))["initial_states"] == pinned
+    run = Run.create(p, pl, "imp")
+    assert run.build_initial_states() == pinned                     # copied, not rebuilt
+    assert not (run.run_dir / "prebuild_costs.jsonl").exists()      # no gate, KG or embedding call
+    assert run.execute().status == "complete"                      # the stores open under this run's identity
+    # a plan with other answer bundles refuses the imported state
+    other = Run.create(p, load_set_plan(pilot), "other")
+    with pytest.raises(ValueError, match="re-gate it for this plan"):
+        other.build_initial_states()
+    # tampering with the source snapshot is seen by preflight (and by freeze's pins)
+    db = art / "state" / "initial" / "product" / "state" / "knowledge.sqlite"
+    db.write_bytes(db.read_bytes() + b"\0")
+    from labgene.app import run_preflight
+    assert any("initial_state_from" in x for x in run_preflight(p, pl))
+
+
+def test_u40_extend_plan_continues_a_finished_pilot_set_after_an_in_place_regate(tmp_path):
+    prof, _ = files(tmp_path, fixture={"consult_every": 3})           # consult answers land in both memories
+    art = tmp_path / "artifacts"
+    common = {"conditions": ["baseline", "product"], "mode": "progression", "parallel_conditions": True}
+    pilot, main = tmp_path / "pilot.yaml", tmp_path / "main.yaml"
+    pilot.write_text(yaml.safe_dump({"set_id": "pilot", "episodes": ["fixture_ridge"], "action_budget": 50,
+                                     **common}), encoding="utf-8")
+    main.write_text(yaml.safe_dump({"set_id": "main", "episodes": ["fixture_ridge", "fixture_catalyst"],
+                                    "action_budget": 150, **common}), encoding="utf-8")
+    assert run_cli("run-set", "--profile", prof, "--plan", str(pilot), "--run-id", "p") == 0
+    con = sqlite3.connect(art / "p" / "ledger.sqlite")
+    before = con.execute("SELECT episode_id, scope_json, outcome FROM episodes ORDER BY episode_id").fetchall()
+    con.close()
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump({"set_id": "main", "episodes": ["fixture_catalyst"], "action_budget": 150,
+                                   **common}), encoding="utf-8")
+    assert run_cli("extend-plan", "--run-id", "p", "--artifacts-dir", str(art), "--plan", str(bad)) == 2
+    assert run_cli("regate-state", "--profile", prof, "--plan", str(main), "--run-id", "seed", "--from-run", "p") == 0
+    # the fixture gate holds consult answers (no source in their context); pretend they had been allowed, so the
+    # re-gate has stored answers to re-decide (it withholds them again)
+    rep1 = art / "p" / "state"
+    for cond, sql in (("product", "UPDATE consult_cases SET withheld=0"),
+                      ("baseline", "UPDATE records SET withheld=0 WHERE kind='consult'")):
+        with sqlite3.connect(rep1 / cond / "pilot" / "rep1" / "memory.sqlite") as m:
+            assert m.execute(sql).rowcount > 0
+    assert run_cli("extend-plan", "--run-id", "p", "--artifacts-dir", str(art), "--plan", str(main),
+                   "--seed-run", "seed") == 0
+    run = Run.load(art / "p")
+    assert run.plan.set_id == "pilot" and run.plan.episodes == ["fixture_ridge", "fixture_catalyst"]
+    ext = json.loads(next((art / "p").glob("extend-*.json")).read_text(encoding="utf-8"))
+    prod = ext["states"]["p/product/pilot/rep1"]
+    assert prod["knowledge"]["seeded_verdicts_last_pass"] > 0
+    for key in ("p/product/pilot/rep1", "p/baseline/pilot/rep1"):
+        c = ext["states"][key]["consults"]
+        assert c["rechecked"] > 0 and c["withheld"] and len(c["withheld"]) == c["rechecked"]
+    assert (art / "p" / "extend-backup").is_dir()
+    assert run_cli("resume", "--run-id", "p", "--artifacts-dir", str(art)) == 0
+    con = sqlite3.connect(art / "p" / "ledger.sqlite")
+    after = con.execute("SELECT episode_id, scope_json, outcome FROM episodes ORDER BY episode_id").fetchall()
+    tasks = {r[0] for r in con.execute("SELECT DISTINCT task_id FROM episodes")}
+    con.close()
+    assert [r for r in after if r[0] in {b[0] for b in before}] == before     # the pilot episodes are untouched
+    assert tasks == {"fixture_ridge", "fixture_catalyst"}
+    # a second extension with the same plan finds everything re-gated already (no new gate verdicts needed)
+    assert run_cli("extend-plan", "--run-id", "p", "--artifacts-dir", str(art), "--plan", str(main)) == 0
+
+
+def test_review_an_interrupted_import_is_redone_and_a_regate_keeps_its_source(tmp_path, monkeypatch):
+    import labgene.knowledge.regate as rg
+    prof, plan = files(tmp_path)
+    pilot = tmp_path / "pilot.yaml"
+    pilot.write_text(yaml.safe_dump({"set_id": "pilot", "conditions": ["baseline", "product"],
+                                     "episodes": ["fixture_ridge"]}), encoding="utf-8")
+    art = tmp_path / "artifacts"
+    for src in ("a", "b"):
+        assert run_cli("build-corpus", "--profile", prof, "--plan", str(pilot), "--run-id", src) == 0
+    p, pl = load_profile(prof), load_set_plan(plan)
+    run = Run.create(p, pl, "state")
+    orig = rg.regate_state
+    monkeypatch.setattr(rg, "regate_state", lambda *a, **k: (_ for _ in ()).throw(KeyboardInterrupt("gate down")))
+    with pytest.raises(KeyboardInterrupt):
+        run.regate_initial_states(art / "a")
+    monkeypatch.setattr(rg, "regate_state", orig)
+    with pytest.raises(ValueError, match="another source"):
+        run.regate_initial_states(art / "b")
+    assert run.regate_initial_states(art / "a")                 # finishing with its own source works
+    # an import killed after copying state/ but before the manifest is redone on the next call
+    doc = yaml.safe_load(Path(prof).read_text(encoding="utf-8"))
+    doc["knowledge"]["initial_state_from"] = str(art / "state")
+    imp = tmp_path / "import.yaml"
+    imp.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    r2 = Run.create(load_profile(imp), pl, "imp")
+    partial = r2.run_dir / "initial" / "product"
+    shutil.copytree(art / "state" / "initial" / "product" / "state", partial / "state")
+    assert r2.build_initial_states()["product"] == run.manifest.initial_state_hashes["product"]
+    assert (partial.parent / "product.partial-1").is_dir()

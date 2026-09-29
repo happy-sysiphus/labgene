@@ -113,7 +113,8 @@ def run_gate_validation(checker: LeakageChecker, bundles: list[AnswerBundle], ca
                      "correct": actual == c.expected})
     decidable = sum(sum(confusion[e].values()) for e in ("allow", "block"))
     counts = {"false_allow_on_block_cases": confusion["block"]["allow"],
-              "false_block_on_allow_cases": confusion["allow"]["block"],
+              # U30: a hold withholds the material like a block, so a hold on an allow case is a false block
+              "false_block_on_allow_cases": confusion["allow"]["block"] + confusion["allow"]["hold"],
               "false_allow_on_hold_cases": confusion["hold"]["allow"],
               "hold_rate": round((confusion["allow"]["hold"] + confusion["block"]["hold"]) / decidable, 4)
               if decidable else 0.0,

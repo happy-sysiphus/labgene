@@ -90,7 +90,8 @@ def identity_blocked(url: str | None, titles: list[str], metadata: dict[str, Any
         for d in b.blocked_documents:
             keys = [_keys(x, None, None) for x in d.urls] + [_keys(None, d.doi, d.arxiv_id)]
             if (doi and any(_same_doi(doi, k[0]) for k in keys)) or (arx and arx in {k[1] for k in keys}) \
-                    or (u and u in {k[2] for k in keys}):
+                    or (u and any(k[2] and (u == k[2] or u.startswith(k[2] + "/")) for k in keys)):
+                # ^ a page under a blocked URL (repo file, docs subpage, PDF of the landing page) is the same document
                 return True
             if any(SequenceMatcher(None, t, norm_title(x)).ratio() >= TITLE_MATCH for t in ts for x in d.titles):
                 return True
@@ -199,7 +200,8 @@ def guarded_generate(provider: LLMProvider, req: GenerationRequest, ctx: CallCon
     A generated reply from another (or an unnamed) model raises ModelChangedError (spec §10.1, internal roles too)."""
     r = None
     if ctx.guard is not None:
-        est_in = (len(req.system_instruction) + len(canonical_json(req.input))) // 2 + 1   # conservative chars->tokens
+        est_in = (len(req.system_instruction) + len(canonical_json(req.input))) // 2 + 1 \
+            + getattr(provider, "input_overhead_tokens", 0)   # conservative chars->tokens + the CLI's own prompt
         r = ctx.guard.reserve(req.model, est_in, req.max_output_tokens or 0)
     res = None
     try:
@@ -209,7 +211,10 @@ def guarded_generate(provider: LLMProvider, req: GenerationRequest, ctx: CallCon
             ctx.guard.settle(r, res.usage if res is not None else Usage())
     ctx.emit(kind="llm_call", role=req.role, provider=res.provider, model=req.model,
              status=res.status.value, request_id=res.request_id, usage=res.usage, latency_s=res.latency_s,
-             attempt=res.attempt, detail={"model_returned": res.model_returned})
+             attempt=res.attempt, detail={"model_returned": res.model_returned, "error": res.error,
+                                          "sdk_version": res.sdk_version,
+                                          "model_verified": getattr(provider, "echoes_model", True),
+                                          "billing": getattr(provider, "billing", "per_token")})
     if res.status in (ProviderStatus.ok, ProviderStatus.incomplete) and res.model_returned not in (req.model, *allowed_models):
         raise ModelChangedError(f"{req.role}: provider returned model {res.model_returned!r}, expected {req.model!r}")
     return res

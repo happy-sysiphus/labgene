@@ -12,7 +12,7 @@ import math
 from enum import Enum
 from typing import Annotated, Any, Callable, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 CONTRACT_VERSION = "0.1.0"
 
@@ -67,6 +67,19 @@ class RunScope(Frozen):
     episode_order: int       # 1-based position in the set plan
     task_id: str
     visit_index: int         # 1 = first visit of task_id within this set rep
+    # U26: an attempt's own action budget; below MAX_ACTIONS only for the last attempt of a progression set whose
+    # set-wide budget is running out. Part of the episode's identity, so a resume must recompute the same value.
+    action_budget: int = Field(default=MAX_ACTIONS, ge=1, le=MAX_ACTIONS)
+    # U45: every experiment follows exactly one consultation (actions alternate consult, run_experiment). Serialized
+    # only when on, so earlier scopes keep their exact JSON.
+    consult_before_experiment: bool = False
+
+    @model_serializer(mode="wrap")
+    def _omit_default_rule(self, handler):
+        d = handler(self)
+        if not self.consult_before_experiment:
+            d.pop("consult_before_experiment", None)
+        return d
 
     @property
     def memory_scope(self) -> MemoryScope:
@@ -134,6 +147,14 @@ class SuccessCriterion(Frozen):
         return value <= self.target + self.tolerance
 
 
+class HiddenCriterion(Frozen):
+    """U44: a success criterion whose rule is public but whose number the evaluator holds
+    (PrivateTaskAssets.hidden_success_thresholds), e.g. 'TON within 2 % of the best TON this reactor model reaches'."""
+    metric: str
+    direction: Literal["maximize", "minimize"]
+    rule: str
+
+
 class PublicTask(Frozen):
     """Everything the researcher and both advisors may see about a task (§6.1)."""
     task_id: str
@@ -144,11 +165,26 @@ class PublicTask(Frozen):
     constraints: list[LinearConstraint] = []
     metrics: list[MetricSpec]
     success: list[SuccessCriterion]  # ALL must hold (explicit multi-metric rule)
+    hidden_success: list[HiddenCriterion] = []   # U44: must hold too; thresholds are evaluator-held
     simulator_id: str
     simulator_version: str
 
-    def is_success(self, results: dict[str, float]) -> bool:
-        return bool(self.success) and all(c.satisfied(results.get(c.metric)) for c in self.success)
+    @model_serializer(mode="wrap")
+    def _omit_empty_hidden(self, handler):
+        """A task without hidden criteria serializes (and hashes) exactly as before U44."""
+        d = handler(self)
+        if not self.hidden_success:
+            d.pop("hidden_success", None)
+        return d
+
+    def is_success(self, results: dict[str, float], hidden: list[SuccessCriterion] | tuple = ()) -> bool:
+        """Public criteria AND, for each declared hidden criterion, the evaluator's threshold for it. A missing
+        threshold never passes; a threshold for an undeclared criterion is ignored (no unannounced criterion)."""
+        declared = {h.metric for h in self.hidden_success}
+        hidden = [c for c in hidden if c.metric in declared]
+        if declared - {c.metric for c in hidden}:
+            return False
+        return bool(self.success) and all(c.satisfied(results.get(c.metric)) for c in [*self.success, *hidden])
 
 
 class DocumentIdentity(Frozen):
@@ -177,6 +213,7 @@ class PrivateTaskAssets(Frozen):
     model_artifacts: dict[str, str] = {}      # name -> sha256
     validity_evidence: dict[str, Any] = {}
     known_success_inputs: list[dict[str, Any]] = []
+    hidden_success_thresholds: list[SuccessCriterion] = []   # U44: numbers of PublicTask.hidden_success
 
 
 # ---------------------------------------------------------------- actions (§5, §11.1-11.2)
@@ -205,7 +242,7 @@ class ProtocolError(Frozen):
     decision_index: int
     raw_text: str | None
     reason: Literal["invalid_json", "unsupported_action", "missing_question",
-                    "provider_incomplete", "provider_refusal", "multiple_actions"]
+                    "provider_incomplete", "provider_refusal", "multiple_actions", "action_not_allowed"]
     detail: str = ""
 
 
@@ -316,6 +353,14 @@ class ResearcherView(Frozen):
     remaining_actions: int
     history: list[HistoryItem]
     notes: list[ResearchNote]
+    required_action: Literal["consult", "run_experiment"] | None = None   # U45; serialized only when set
+
+    @model_serializer(mode="wrap")
+    def _omit_free_choice(self, handler):
+        d = handler(self)
+        if self.required_action is None:
+            d.pop("required_action", None)
+        return d
 
 
 # ---------------------------------------------------------------- providers (§11.5)

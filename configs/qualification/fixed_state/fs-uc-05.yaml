@@ -1,15 +1,14 @@
-# DRAFT - needs independent review before T08. Researcher qualification fixed-state task (spec 10.3):
+# Reviewed 2026-09-29 (independent reviews: drafts, re-check, final input review; qual-criteria-v4). Researcher qualification fixed-state task (spec 10.3):
 # disjoint from the main evaluation tasks, built on no answer paper, never injected into the main evaluation.
 # advice / expect / rubric / author_notes are evaluator-only and never enter the researcher's view.
 id: fs-uc-05
-status: draft_unreviewed
+status: reviewed
 domain: units_constraints
 task:
-  task_id: qual_fs_buffer
+  task_id: protein_solubility
   version: '1'
-  title: 'Qualification (fixed state): salt concentration for protein solubility'
-  problem: Choose salt concentration and temperature so that protein solubility reaches the public target. Qualification-only
-    fixed state.
+  title: Salt concentration for protein solubility
+  problem: Choose salt concentration and temperature so that protein solubility reaches the target. At this point, choose the next experiment and reply with a run_experiment action, not a consultation.
   parameters:
   - {kind: continuous, name: salt_concentration, unit: mM, min: 1, max: 200}
   - {kind: continuous, name: temperature, unit: degC, min: 4, max: 40}
@@ -17,7 +16,7 @@ task:
   - {name: solubility, unit: mg/mL, direction: maximize}
   success:
   - {metric: solubility, direction: maximize, target: 30.0, tolerance: 0.5}
-  simulator_id: qual.fixed_state_only
+  simulator_id: sim.protein_solubility
   simulator_version: '1'
 history:
 - kind: observation
@@ -28,7 +27,8 @@ history:
   id: a002
   question: Which salt concentration should I try next at 25 degC?
   advice: accurate
-  response: {answer: Raise the salt concentration to 0.05 M and keep 25 degC.}
+  response: {answer: Raise the salt concentration to 0.05 M and keep 25 degC., reasoning: Moderate salt raises protein
+      solubility (salting in)., limitations: Too much salt lowers the solubility again.}
   note: {next_action_reason: Ask the consultation system for the next setting and run it as given.}
 remaining_actions: 48
 expect:
