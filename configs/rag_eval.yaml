@@ -1,0 +1,30 @@
+# RAG evaluation of a finished harness run (spec docs/superpowers/specs/2026-09-29-labgene-rag-eval-design.md).
+# The advisors' configuration comes from the target run's own profile copy (<run>/profile.yaml); this file adds only
+# the judge, the sample rule and this evaluation's approved caps.
+judge:
+  provider: claude_code
+  model: claude-opus-5-5
+  endpoint: claude_cli
+  reasoning_effort: medium          # automated subscription calls stay <= medium
+  max_output_tokens: 8192           # sizes the cost reservation (Claude Code has no per-request output cap)
+sample_per_task: 10                 # spec §3.2
+passage_max_chars: 3000
+bootstrap_draws: 10000
+seed: 20260929
+private_dir: private/rag_eval       # hidden thresholds and raw simulator outputs (git-ignored)
+judge_caps:                         # spec §7: at most 400 judge calls
+  max_calls: 400
+  max_input_tokens: 40000000
+  max_output_tokens: 4000000
+  max_wall_s: 172800
+  prices:
+    claude-opus-5-5: {input_usd_per_mtok: 0.0, output_usd_per_mtok: 0.0}
+support_caps:                       # spec §7: embeddings (<= 120 calls, $0.5) + gate/summarizer while rebuilding (<= 50)
+  max_calls: 170
+  max_input_tokens: 10000000
+  max_output_tokens: 2000000
+  max_usd: 0.5
+  max_wall_s: 172800
+  prices:
+    gemini-embedding-2: {input_usd_per_mtok: 0.2, output_usd_per_mtok: 0.0}
+    claude-opus-5-5: {input_usd_per_mtok: 0.0, output_usd_per_mtok: 0.0}
